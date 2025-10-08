@@ -100,3 +100,6 @@ model user {
 ```
 npx prisma migrate dev
 ```
+## 56-7 Designing the ERD (User, Patient, Doctor, Admin)
+
+![alt text](image-4.png)
