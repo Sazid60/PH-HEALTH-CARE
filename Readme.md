@@ -290,3 +290,134 @@ enum Gender {
 ```
 npx prisma migrate dev
 ```
+
+## 56-10 Organizing Prisma Schema into Multiple Files
+- lets organize
+- Create prisma -> schema 
+- here each operation will be separated 
+
+- schema.prisma 
+
+```prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+```
+
+- enum.prisma 
+
+
+```prisma 
+enum UserRole {
+  PATIENT
+  DOCTOR
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  DELETED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+```
+
+- we basically do not need to export or import the types. prisma handles these if we maintain the folder structure
+
+- user.prisma
+
+```prisma 
+model User {
+  id                 String     @id @default(uuid())
+  email              String     @unique
+  password           String
+  role               UserRole   @default(PATIENT)
+  needPasswordChange Boolean    @default(true)
+  status             UserStatus @default(ACTIVE)
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+  admin              Admin?
+  doctor             Doctor?
+  patient            Patient?
+
+  @@map("users") // in which name will be saved in the database 
+}
+
+model Admin {
+  id            String   @id @default(uuid())
+  name          String
+  email         String   @unique
+  profilePhoto  String?
+  contactNumber String
+  isDeleted     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [email], references: [email])
+
+  @@map("admins")
+}
+
+model Doctor {
+  id                  String   @id @default(uuid())
+  name                String
+  email               String   @unique
+  profilePhoto        String?
+  contactNumber       String
+  address             String
+  registrationNumber  String
+  experience          Int      @default(0)
+  gender              Gender
+  appointmentFee      Int
+  qualification       String
+  currentWorkingPlace String
+  designation         String
+  isDeleted           Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  user                User     @relation(fields: [email], references: [email])
+
+  @@map("doctors")
+}
+
+model Patient {
+  id            String   @id @default(uuid())
+  name          String
+  email         String   @unique
+  profilePhoto  String?
+  contactNumber String
+  address       String
+  isDeleted     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [email], references: [email])
+
+  @@map("patients")
+}
+
+```
+
+- before migration we have to mention in package.json to let prisma know what is going on and where is the conflict 
+
+```json 
+
+  "prisma": {
+    "schema": "./prisma/schema"
+  },
+```
+
+- now migrate 
+
+```
+npx prisma migrate dev
+```
