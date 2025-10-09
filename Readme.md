@@ -1,423 +1,71 @@
-# PH-HEALTHCARE PROJECT-FOUNDATION-AND-DATABASE-SETUP
+# Patient-Management-And-Authentication-Setup
 
-## 56-1 Introduction to the “PH Health Care” Project
+## 57-1 Creating Patient (User) – Part 1
+- app.ts 
 
-![alt text](image.png)
+```ts 
+import express, { Application, NextFunction, Request, Response } from 'express';
+import cors from 'cors';
+import globalErrorHandler from './app/middlewares/globalErrorHandler';
+import notFound from './app/middlewares/notFound';
+import config from './config';
 
-## 56-2 Requirement Analysis – Part 1
+import router from './app/routes';
 
-- Patient Works in My Ph Healthcare Site
+const app: Application = express();
+app.use(cors({
+    origin: 'http://localhost:3000',
+    credentials: true
+}));
 
-![alt text](image-1.png)
+//parser
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-## 56-3 Requirement Analysis – Part 2
+app.use("/api/v1", router)
 
-- Doctor works and relations
 
-![alt text](image-2.png)
+app.get('/', (req: Request, res: Response) => {
+    res.send({
+        message: "Server is running..",
+        environment: config.node_env,
+        uptime: process.uptime().toFixed(2) + " sec",
+        timeStamp: new Date().toISOString()
+    })
+});
 
-## 56-4 Requirement Analysis – Part 3
 
-- Lets see admin works
+app.use(globalErrorHandler);
 
-![alt text](image-3.png)
+app.use(notFound);
 
-- Lets Finalize Tech Stacks first
-
-- we will use
-  1. Node.js
-  2. Express.js
-  3. Postgresql
-  4. Prisma
-  5. sslcomerz
-  6. nodemailer/resend/mailgun
-  7. Ai Agent
-  8. Rate limiter
-
-## 56-5 Cloning & Running the Starter Pack
-
-[Starter Template](https://github.com/Apollo-Level2-Web-Dev/ph-health-care-server/tree/part-1)
-
-## 56-6 Setting up Prisma in the Starter Pack
-
-- Install The dependency
-
-```
-npm install
+export default app;
 ```
 
-- Install prisma
+- src -> app -> modules -> user.routes.ts 
 
-```
-npm install prisma --save-dev
-```
+```ts 
+import express from 'express'
+import { UserController } from './user.controller'
 
-- install prisma Client
+const router = express.Router()
 
-```
-npm install @prisma/client
-```
+router.post("/create-patient",UserController.createPatient )
 
-- now generate prisma folder
-
+export const UserRoutes = router 
 ```
-npx prisma init
-```
-
-- setup schema.prisma
+- src -> app -> modules -> user.controller.ts 
 
 ```ts
+import { Request, Response } from "express";
+import catchAsync from "../../shared/catchAsync";
 
-generator client {
-  provider = "prisma-client-js"
+const createPatient = catchAsync(async (req: Request, res: Response) => {
+    console.log("Patient Created! ", req.body)
+})
+
+
+export const UserController = {
+    createPatient
 }
-
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-```
-
-- set the database url from prisma site and your pass of postgres
-
-```prisma
-generator client {
-  provider = "prisma-client-js"
-}
-
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
-model user {
-  id Int @id @default(autoincrement())
-  name String
-}
-```
-
-- run this command for migrating the database
-
-```
-npx prisma migrate dev
-```
-
-## 56-7 Designing the ERD (User, Patient, Doctor, Admin)
-
-![alt text](image-4.png)
-
-## 56-8 Writing Prisma Schema for User, Doctor, and Patient
-
-- creating schema
-
-```prisma
-generator client {
-  provider = "prisma-client-js"
-}
-
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
-model User {
-  id                 String     @id @default(uuid())
-  email              String     @unique
-  password           String
-  role               UserRole   @default(PATIENT)
-  needPasswordChange Boolean    @default(true)
-  status             UserStatus @default(ACTIVE)
-  createdAt          DateTime   @default(now())
-  updatedAt          DateTime   @updatedAt
-
-  @@map("users") // in which name will be saved in the database
-}
-
-model Admin {
-  id            String   @id @default(uuid())
-  name          String
-  email         String   @unique
-  profilePhoto  String?
-  contactNumber String
-  isDeleted     Boolean  @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  @@map("admins")
-}
-
-model Doctor {
-  id                  String   @id @default(uuid())
-  name                String
-  email               String   @unique
-  profilePhoto        String?
-  contactNumber       String
-  address             String
-  registrationNumber  String
-  experience          Int      @default(0)
-  gender              Gender
-  appointmentFee      Int
-  qualification       String
-  currentWorkingPlace String
-  designation         String
-  isDeleted           Boolean  @default(false)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-
-  @@map("doctors")
-}
-
-enum UserRole {
-  PATIENT
-  DOCTOR
-  ADMIN
-}
-
-enum UserStatus {
-  ACTIVE
-  INACTIVE
-  DELETED
-}
-
-enum Gender {
-  MALE
-  FEMALE
-}
-
-```
-
-## 56-9 Extending Prisma Schema with Admin & Building Relations (User ↔ Admin/Patient/Doctor)
-
-- relation added
-
-```prisma
-generator client {
-  provider = "prisma-client-js"
-}
-
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
-model User {
-  id                 String     @id @default(uuid())
-  email              String     @unique
-  password           String
-  role               UserRole   @default(PATIENT)
-  needPasswordChange Boolean    @default(true)
-  status             UserStatus @default(ACTIVE)
-  createdAt          DateTime   @default(now())
-  updatedAt          DateTime   @updatedAt
-  admin              Admin?
-  doctor             Doctor?
-  patient            Patient?
-
-  @@map("users") // in which name will be saved in the database
-}
-
-model Admin {
-  id            String   @id @default(uuid())
-  name          String
-  email         String   @unique
-  profilePhoto  String?
-  contactNumber String
-  isDeleted     Boolean  @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  user          User     @relation(fields: [email], references: [email])
-
-  @@map("admins")
-}
-
-model Doctor {
-  id                  String   @id @default(uuid())
-  name                String
-  email               String   @unique
-  profilePhoto        String?
-  contactNumber       String
-  address             String
-  registrationNumber  String
-  experience          Int      @default(0)
-  gender              Gender
-  appointmentFee      Int
-  qualification       String
-  currentWorkingPlace String
-  designation         String
-  isDeleted           Boolean  @default(false)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-  user                User     @relation(fields: [email], references: [email])
-
-  @@map("doctors")
-}
-
-model Patient {
-  id            String   @id @default(uuid())
-  name          String
-  email         String   @unique
-  profilePhoto  String?
-  contactNumber String
-  address       String
-  isDeleted     Boolean  @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  user          User     @relation(fields: [email], references: [email])
-
-  @@map("patients")
-}
-
-enum UserRole {
-  PATIENT
-  DOCTOR
-  ADMIN
-}
-
-enum UserStatus {
-  ACTIVE
-  INACTIVE
-  DELETED
-}
-
-enum Gender {
-  MALE
-  FEMALE
-}
-
-```
-- run prisma command 
-
-```
-npx prisma migrate dev
-```
-
-## 56-10 Organizing Prisma Schema into Multiple Files
-- lets organize
-- Create prisma -> schema 
-- here each operation will be separated 
-
-- schema.prisma 
-
-```prisma
-generator client {
-  provider = "prisma-client-js"
-}
-
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
-```
-
-- enum.prisma 
-
-
-```prisma 
-enum UserRole {
-  PATIENT
-  DOCTOR
-  ADMIN
-}
-
-enum UserStatus {
-  ACTIVE
-  INACTIVE
-  DELETED
-}
-
-enum Gender {
-  MALE
-  FEMALE
-}
-
-```
-
-- we basically do not need to export or import the types. prisma handles these if we maintain the folder structure
-
-- user.prisma
-
-```prisma 
-model User {
-  id                 String     @id @default(uuid())
-  email              String     @unique
-  password           String
-  role               UserRole   @default(PATIENT)
-  needPasswordChange Boolean    @default(true)
-  status             UserStatus @default(ACTIVE)
-  createdAt          DateTime   @default(now())
-  updatedAt          DateTime   @updatedAt
-  admin              Admin?
-  doctor             Doctor?
-  patient            Patient?
-
-  @@map("users") // in which name will be saved in the database 
-}
-
-model Admin {
-  id            String   @id @default(uuid())
-  name          String
-  email         String   @unique
-  profilePhoto  String?
-  contactNumber String
-  isDeleted     Boolean  @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  user          User     @relation(fields: [email], references: [email])
-
-  @@map("admins")
-}
-
-model Doctor {
-  id                  String   @id @default(uuid())
-  name                String
-  email               String   @unique
-  profilePhoto        String?
-  contactNumber       String
-  address             String
-  registrationNumber  String
-  experience          Int      @default(0)
-  gender              Gender
-  appointmentFee      Int
-  qualification       String
-  currentWorkingPlace String
-  designation         String
-  isDeleted           Boolean  @default(false)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-  user                User     @relation(fields: [email], references: [email])
-
-  @@map("doctors")
-}
-
-model Patient {
-  id            String   @id @default(uuid())
-  name          String
-  email         String   @unique
-  profilePhoto  String?
-  contactNumber String
-  address       String
-  isDeleted     Boolean  @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  user          User     @relation(fields: [email], references: [email])
-
-  @@map("patients")
-}
-
-```
-
-- before migration we have to mention in package.json to let prisma know what is going on and where is the conflict 
-
-```json 
-
-  "prisma": {
-    "schema": "./prisma/schema"
-  },
-```
-
-- now migrate 
-
-```
-npx prisma migrate dev
 ```
