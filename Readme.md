@@ -70,137 +70,94 @@ export const UserController = {
 }
 ```
 
-## 56-10 Organizing Prisma Schema into Multiple Files
+## 57-1 Creating Patient (User) – Part 2
+- user.routes.ts 
 
-- lets organize
-- Create prisma -> schema
-- here each operation will be separated
+```ts 
+import express from 'express';
+import { UserRoutes } from '../modules/user/user.routes';
 
-- schema.prisma
 
-```prisma
-generator client {
-  provider = "prisma-client-js"
-}
+const router = express.Router();
 
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
+const moduleRoutes = [
+    {
+        path: '/user',
+        route: UserRoutes
+    }
+];
 
+moduleRoutes.forEach(route => router.use(route.path, route.route))
+
+export default router;
 ```
+- user.controller.ts 
 
-- enum.prisma
+```ts 
+import { Request, Response } from "express";
+import catchAsync from "../../shared/catchAsync";
+import { UserService } from "./user.service";
+import sendResponse from "../../shared/sendResponse";
 
-```prisma
-enum UserRole {
-  PATIENT
-  DOCTOR
-  ADMIN
+const createPatient = catchAsync(async (req: Request, res: Response) => {
+    console.log("Patient Created! ", req.body)
+    const result = await UserService.createPatient(req.body)
+
+    sendResponse(res, {
+        statusCode: 201,
+        success: true,
+        message: "Patient Created Successfully",
+        data: result
+    })
+})
+
+
+export const UserController = {
+    createPatient
 }
-
-enum UserStatus {
-  ACTIVE
-  INACTIVE
-  DELETED
-}
-
-enum Gender {
-  MALE
-  FEMALE
-}
-
 ```
+- user.interface.ts 
 
-- we basically do not need to export or import the types. prisma handles these if we maintain the folder structure
+```ts 
+export type createPatientInput = {
+    name : string,
+    email : string
+    password : string
+}
+```
+- user.service.ts 
 
-- user.prisma
+```ts 
+import bcrypt from "bcryptjs";
+import { createPatientInput } from "./user.interface";
+import { prisma } from "../../shared/prisma";
 
-```prisma
-model User {
-  id                 String     @id @default(uuid())
-  email              String     @unique
-  password           String
-  role               UserRole   @default(PATIENT)
-  needPasswordChange Boolean    @default(true)
-  status             UserStatus @default(ACTIVE)
-  createdAt          DateTime   @default(now())
-  updatedAt          DateTime   @updatedAt
-  admin              Admin?
-  doctor             Doctor?
-  patient            Patient?
+const createPatient = async (payload: createPatientInput) => {
+    const hashedPassword = await bcrypt.hash(payload.password, 10)
 
-  @@map("users") // in which name will be saved in the database
+    const result = await prisma.$transaction(async (tnx) => {
+        await tnx.user.create({
+            data: {
+                email: payload.email,
+                password: hashedPassword
+            }
+        })
+
+        return await tnx.patient.create({
+            data: {
+                name: payload.name,
+                email: payload.email
+            }
+        })
+    })
+
+    return result
 }
 
-model Admin {
-  id            String   @id @default(uuid())
-  name          String
-  email         String   @unique
-  profilePhoto  String?
-  contactNumber String
-  isDeleted     Boolean  @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  user          User     @relation(fields: [email], references: [email])
-
-  @@map("admins")
+export const UserService = {
+    createPatient
 }
-
-model Doctor {
-  id                  String   @id @default(uuid())
-  name                String
-  email               String   @unique
-  profilePhoto        String?
-  contactNumber       String
-  address             String
-  registrationNumber  String
-  experience          Int      @default(0)
-  gender              Gender
-  appointmentFee      Int
-  qualification       String
-  currentWorkingPlace String
-  designation         String
-  isDeleted           Boolean  @default(false)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-  user                User     @relation(fields: [email], references: [email])
-
-  @@map("doctors")
-}
-
-model Patient {
-  id            String   @id @default(uuid())
-  name          String
-  email         String   @unique
-  profilePhoto  String?
-  contactNumber String
-  address       String
-  isDeleted     Boolean  @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  user          User     @relation(fields: [email], references: [email])
-
-  @@map("patients")
-}
-
 ```
-
-- before migration we have to mention in package.json to let prisma know what is going on and where is the conflict
-
-```json
-
-  "prisma": {
-    "schema": "./prisma/schema"
-  },
-```
-
-- now migrate
-
-```
-npx prisma migrate dev
-```
-
 ## 57-3 Building File Upload Helper with Multer
 
 - For Image Uploading we will use third party package named `cloudinary` with `multer`
