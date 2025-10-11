@@ -7,6 +7,8 @@ const createPatient = catchAsync(async (req: Request, res: Response) => {
     console.log("Patient Created! ", req.body)
     const result = await UserService.createPatient(req.body)
 
+    console.log(req.body)
+
     sendResponse(res, {
         statusCode: 201,
         success: true,
