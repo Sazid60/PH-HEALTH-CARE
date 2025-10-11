@@ -511,3 +511,172 @@ export const fileUploader = {
     uploadToCloudinary
 }
 ```
+
+## 57-7 Uploading Image to Cloudinary
+- fileUploader.ts 
+
+```ts 
+
+import path from 'path'
+import { v2 as cloudinary } from 'cloudinary'
+import multer from 'multer'
+import config from '../../config'
+
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        // cb(null, '/tmp/my-uploads')
+        cb(null, path.join(process.cwd(), "/uploads")) //C:\Users\Sazid\my-project\uploads
+
+    },
+    filename: function (req, file, cb) {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
+        cb(null, file.fieldname + '-' + uniqueSuffix)
+    }
+})
+
+const upload = multer({ storage: storage })
+
+// for cloudinary 
+const uploadToCloudinary = async (file: Express.Multer.File) => {
+    console.log("file", file)
+
+    cloudinary.config({
+        cloud_name: config.cloudinary.cloud_name,
+        api_key: config.cloudinary.api_key,
+        api_secret: config.cloudinary.api_secret
+    });
+
+    // Upload an image
+    const uploadResult = await cloudinary.uploader
+        .upload(
+            file.path, {
+            public_id: file.filename,
+        }
+        )
+        .catch((error) => {
+            console.log(error);
+        });
+
+    console.log({uploadResult});
+
+    return uploadResult
+}
+
+
+
+
+
+
+export const fileUploader = {
+    upload,
+    uploadToCloudinary
+}
+```
+
+- user.service.ts 
+
+```ts
+import bcrypt from "bcryptjs";
+import { createPatientInput } from "./user.interface";
+import { prisma } from "../../shared/prisma";
+import { Request } from "express";
+import { fileUploader } from "../../helper/fileUploader";
+
+const createPatient = async (req: Request) => {
+
+    if (req.file) {
+        const uploadResult = await fileUploader.uploadToCloudinary(req.file)
+        console.log(uploadResult)
+        req.body.patient.profilePhoto = uploadResult?.secure_url
+    }
+
+    const hashedPassword = await bcrypt.hash(req.body.password, 10)
+
+    const result = await prisma.$transaction(async (tnx) => {
+        await tnx.user.create({
+            data: {
+                email: req.body.patient.email,
+                password: hashedPassword
+            }
+        })
+
+        return await tnx.patient.create({
+            data: req.body.patient
+        })
+    })
+
+    return result
+}
+
+export const UserService = {
+    createPatient
+}
+```
+
+## 57-8 Implementing User Login
+- lets login with the created user. 
+- auth.routes.ts 
+
+```ts 
+import express, { NextFunction, Request, Response } from 'express'
+import { AuthController } from './auth.controller'
+
+const router = express.Router()
+
+router.post("/login", AuthController.login)
+
+export const AuthRoutes = router 
+```
+- auth.controller.ts 
+
+```ts 
+import { Request, Response } from "express";
+import catchAsync from "../../shared/catchAsync";
+
+import sendResponse from "../../shared/sendResponse";
+import { AuthServices } from "./auth.service";
+
+const login = catchAsync(async (req: Request, res: Response) => {
+
+    const result = await AuthServices.login(req.body)
+
+    sendResponse(res, {
+        statusCode: 201,
+        success: true,
+        message: "User Logged In Successfully",
+        data: result
+    })
+})
+
+
+export const AuthController = {
+    login
+}
+```
+- auth.service.ts 
+
+```ts 
+import { UserStatus } from "@prisma/client"
+import { prisma } from "../../shared/prisma"
+import bcrypt from 'bcryptjs';
+
+const login = async (payload: { email: string, password: string }) => {
+    const user = await prisma.user.findUniqueOrThrow({
+        where: {
+            email: payload.email,
+            status: UserStatus.ACTIVE
+        }
+    })
+
+    const isCorrectPassword = await bcrypt.compare(payload.password, user.password)
+
+    if(isCorrectPassword){
+        throw new Error("Password Incorrect")
+    }
+    // if password correct we will generate token 
+}
+
+export const AuthServices = {
+    login
+}
+```
