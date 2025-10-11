@@ -70,80 +70,222 @@ export const UserController = {
 }
 ```
 
-## 57-2 Creating Patient (User) – Part 2
-- create instance of prisma 
-- src -> shared -> prisma.ts
-```ts
-import { PrismaClient } from "@prisma/client";
+## 56-10 Organizing Prisma Schema into Multiple Files
 
-export const prisma = new PrismaClient()
-```
+- lets organize
+- Create prisma -> schema
+- here each operation will be separated
 
-- user.interface.ts 
+- schema.prisma
 
-```ts 
-export type createPatientInput = {
-    name : string,
-    email : string
-    password : string
+```prisma
+generator client {
+  provider = "prisma-client-js"
 }
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
 ```
-- user.controller.ts 
+
+- enum.prisma
+
+```prisma
+enum UserRole {
+  PATIENT
+  DOCTOR
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  DELETED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+```
+
+- we basically do not need to export or import the types. prisma handles these if we maintain the folder structure
+
+- user.prisma
+
+```prisma
+model User {
+  id                 String     @id @default(uuid())
+  email              String     @unique
+  password           String
+  role               UserRole   @default(PATIENT)
+  needPasswordChange Boolean    @default(true)
+  status             UserStatus @default(ACTIVE)
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+  admin              Admin?
+  doctor             Doctor?
+  patient            Patient?
+
+  @@map("users") // in which name will be saved in the database
+}
+
+model Admin {
+  id            String   @id @default(uuid())
+  name          String
+  email         String   @unique
+  profilePhoto  String?
+  contactNumber String
+  isDeleted     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [email], references: [email])
+
+  @@map("admins")
+}
+
+model Doctor {
+  id                  String   @id @default(uuid())
+  name                String
+  email               String   @unique
+  profilePhoto        String?
+  contactNumber       String
+  address             String
+  registrationNumber  String
+  experience          Int      @default(0)
+  gender              Gender
+  appointmentFee      Int
+  qualification       String
+  currentWorkingPlace String
+  designation         String
+  isDeleted           Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  user                User     @relation(fields: [email], references: [email])
+
+  @@map("doctors")
+}
+
+model Patient {
+  id            String   @id @default(uuid())
+  name          String
+  email         String   @unique
+  profilePhoto  String?
+  contactNumber String
+  address       String
+  isDeleted     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [email], references: [email])
+
+  @@map("patients")
+}
+
+```
+
+- before migration we have to mention in package.json to let prisma know what is going on and where is the conflict
+
+```json
+
+  "prisma": {
+    "schema": "./prisma/schema"
+  },
+```
+
+- now migrate
+
+```
+npx prisma migrate dev
+```
+
+## 57-3 Building File Upload Helper with Multer
+
+- For Image Uploading we will use third party package named `cloudinary` with `multer`
+- Install Multer
+
+```
+npm i multer
+```
+
+- install types for multer
+
+```
+npm i --save-dev @types/multer
+```
+
+- dummy multer functionality
+- app -> helper -> fileUploader.ts
 
 ```ts
-import { Request, Response } from "express";
-import catchAsync from "../../shared/catchAsync";
-import { UserService } from "./user.service";
-import sendResponse from "../../shared/sendResponse";
+import multer from "multer";
 
-const createPatient = catchAsync(async (req: Request, res: Response) => {
-    console.log("Patient Created! ", req.body)
-    const result = await UserService.createPatient(req.body)
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, "/tmp/my-uploads");
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, file.fieldname + "-" + uniqueSuffix);
+  },
+});
 
-    sendResponse(res, {
-        statusCode: 201,
-        success: true,
-        message: "Patient Created Successfully",
-        data: result
-    })
+const upload = multer({ storage: storage });
+```
+- Now Lets Fix this and optimize for our system. 
+
+![alt text](image-5.png)
+
+app -> helper -> fileUploader.ts
+
+```ts
+import multer from 'multer'
+import path from 'path'
+
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        // cb(null, '/tmp/my-uploads')
+        cb(null, path.join(process.cwd(), "/uploads")) //C:\Users\Sazid\my-project\uploads
+
+    },
+    filename: function (req, file, cb) {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
+        cb(null, file.fieldname + '-' + uniqueSuffix)
+    }
 })
 
-
-export const UserController = {
-    createPatient
-}
+const upload = multer({ storage: storage })
 ```
+- Now Install Cloudinary
 
-- user.service.ts 
+```
+npm install cloudinary
+```
+- app -> helper -> fileUploader.ts
 
 ```ts 
-import bcrypt from "bcryptjs";
-import { createPatientInput } from "./user.interface";
-import { prisma } from "../../shared/prisma";
+import multer from 'multer'
+import path from 'path'
+import { v2 as cloudinary } from 'cloudinary'
 
-const createPatient = async (payload: createPatientInput) => {
-    const hashedPassword = await bcrypt.hash(payload.password, 10)
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        // cb(null, '/tmp/my-uploads')
+        cb(null, path.join(process.cwd(), "/uploads")) //C:\Users\Sazid\my-project\uploads
 
-    const result = await prisma.$transaction(async (tnx) => {
-        await tnx.user.create({
-            data: {
-                email: payload.email,
-                password: hashedPassword
-            }
-        })
+    },
+    filename: function (req, file, cb) {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
+        cb(null, file.fieldname + '-' + uniqueSuffix)
+    }
+})
 
-        return await tnx.patient.create({
-            data: {
-                name: payload.name,
-                email: payload.email
-            }
-        })
-    })
+const upload = multer({ storage: storage })
 
-    return result
-}
-
-export const UserService = {
-    createPatient
+// for cloudinary 
+const uploadToCloudinary =  async (file : Express.Multer.File) =>{
+    
 }
 ```
