@@ -3,7 +3,8 @@ import catchAsync from "../../shared/catchAsync";
 import { UserService } from "./user.service";
 import sendResponse from "../../shared/sendResponse";
 import pick from "../../helper/pick";
-import { userFilterableField } from "./user.contant";
+import { userFilterableFields } from "./user.constant";
+
 
 const createPatient = catchAsync(async (req: Request, res: Response) => {
     // console.log("Patient Created! ", req.body)
@@ -50,9 +51,8 @@ const getAllFromDB = catchAsync(async (req: Request, res: Response) => {
 
     // const options = pick(req.query, ["page", "limit", "sortBy", "sortOrder"])
 
-    const filters = pick(req.query, userFilterableField)
-
-    const options = pick(req.query, ["page", "limit", "sortBy", "sortOrder"])
+    const filters = pick(req.query, userFilterableFields) // searching , filtering
+    const options = pick(req.query, ["page", "limit", "sortBy", "sortOrder"]) // pagination and sorting
 
 
 
@@ -63,7 +63,7 @@ const getAllFromDB = catchAsync(async (req: Request, res: Response) => {
         statusCode: 200,
         success: true,
         message: "User Retrieved Successfully",
-        meta : result.meta,
+        meta: result.meta,
         data: result.data
     })
 })
