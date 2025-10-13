@@ -1,415 +1,310 @@
-# Patient-Management-And-Authentication-Setup
+# USER-RETRIEVAL-QUERY-OPTIMIZATION-AND-AUTHENTICATION-MIDDLEWARE
 
-## 57-1 Creating Patient (User) – Part 1
-- app.ts 
+## 58-1 Fetch All Users with Pagination
 
-```ts 
-import express, { Application, NextFunction, Request, Response } from 'express';
-import cors from 'cors';
-import globalErrorHandler from './app/middlewares/globalErrorHandler';
-import notFound from './app/middlewares/notFound';
-import config from './config';
-
-import router from './app/routes';
-
-const app: Application = express();
-app.use(cors({
-    origin: 'http://localhost:3000',
-    credentials: true
-}));
-
-//parser
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-app.use("/api/v1", router)
-
-
-app.get('/', (req: Request, res: Response) => {
-    res.send({
-        message: "Server is running..",
-        environment: config.node_env,
-        uptime: process.uptime().toFixed(2) + " sec",
-        timeStamp: new Date().toISOString()
-    })
-});
-
-
-app.use(globalErrorHandler);
-
-app.use(notFound);
-
-export default app;
-```
-
-- src -> app -> modules -> user.routes.ts 
-
-```ts 
-import express from 'express'
-import { UserController } from './user.controller'
-
-const router = express.Router()
-
-router.post("/create-patient",UserController.createPatient )
-
-export const UserRoutes = router 
-```
-- src -> app -> modules -> user.controller.ts 
+- user.routes.ts
 
 ```ts
-import { Request, Response } from "express";
-import catchAsync from "../../shared/catchAsync";
-
-const createPatient = catchAsync(async (req: Request, res: Response) => {
-    console.log("Patient Created! ", req.body)
-})
-
-
-export const UserController = {
-    createPatient
-}
-```
-
-## 57-1 Creating Patient (User) – Part 2
-- user.routes.ts 
-
-```ts 
-import express from 'express';
-import { UserRoutes } from '../modules/user/user.routes';
-
+import express, { NextFunction, Request, Response } from "express";
+import { UserController } from "./user.controller";
 
 const router = express.Router();
 
-const moduleRoutes = [
-    {
-        path: '/user',
-        route: UserRoutes
-    }
-];
+router.get("/", UserController.getAllFromDB);
 
-moduleRoutes.forEach(route => router.use(route.path, route.route))
-
-export default router;
+export const UserRoutes = router;
 ```
-- user.controller.ts 
 
-```ts 
+- user.controller.ts
+
+```ts
 import { Request, Response } from "express";
 import catchAsync from "../../shared/catchAsync";
 import { UserService } from "./user.service";
 import sendResponse from "../../shared/sendResponse";
 
-const createPatient = catchAsync(async (req: Request, res: Response) => {
-    console.log("Patient Created! ", req.body)
-    const result = await UserService.createPatient(req.body)
-
-    sendResponse(res, {
-        statusCode: 201,
-        success: true,
-        message: "Patient Created Successfully",
-        data: result
-    })
-})
-
-
-export const UserController = {
-    createPatient
-}
-```
-- user.interface.ts 
-
-```ts 
-export type createPatientInput = {
-    name : string,
-    email : string
-    password : string
-}
-```
-- user.service.ts 
-
-```ts 
-import bcrypt from "bcryptjs";
-import { createPatientInput } from "./user.interface";
-import { prisma } from "../../shared/prisma";
-
-const createPatient = async (payload: createPatientInput) => {
-    const hashedPassword = await bcrypt.hash(payload.password, 10)
-
-    const result = await prisma.$transaction(async (tnx) => {
-        await tnx.user.create({
-            data: {
-                email: payload.email,
-                password: hashedPassword
-            }
-        })
-
-        return await tnx.patient.create({
-            data: {
-                name: payload.name,
-                email: payload.email
-            }
-        })
-    })
-
-    return result
-}
-
-export const UserService = {
-    createPatient
-}
-```
-## 57-3 Building File Upload Helper with Multer
-
-- For Image Uploading we will use third party package named `cloudinary` with `multer`
-- Install Multer
-
-```
-npm i multer
-```
-
-- install types for multer
-
-```
-npm i --save-dev @types/multer
-```
-
-- dummy multer functionality
-- app -> helper -> fileUploader.ts
-
-```ts
-import multer from "multer";
-
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "/tmp/my-uploads");
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, file.fieldname + "-" + uniqueSuffix);
-  },
+const getAllFromDB = catchAsync(async (req: Request, res: Response) => {
+  const { page, limit } = req.query;
+  const result = await UserService.getAllFromDB({
+    page: Number(page),
+    limit: Number(limit),
+  });
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: "User Retrieved Successfully",
+    data: result,
+  });
 });
 
-const upload = multer({ storage: storage });
+export const UserController = {
+  getAllFromDB,
+};
 ```
-- Now Lets Fix this and optimize for our system. 
 
-![alt text](image-5.png)
+- user.service.ts
 
-app -> helper -> fileUploader.ts
+```
+{{URL}}/user?limit=11&page=1
+```
 
 ```ts
-import multer from 'multer'
-import path from 'path'
+import bcrypt from "bcryptjs";
 
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        // cb(null, '/tmp/my-uploads')
-        cb(null, path.join(process.cwd(), "/uploads")) //C:\Users\Sazid\my-project\uploads
+const getAllFromDB = async ({
+  page,
+  limit,
+}: {
+  page: number;
+  limit: number;
+}) => {
+  const skip = (page - 1) * limit;
+  const result = await prisma.user.findMany({
+    skip,
+    take: limit,
+  });
+  return result;
+};
 
-    },
-    filename: function (req, file, cb) {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
-        cb(null, file.fieldname + '-' + uniqueSuffix)
-    }
-})
-
-const upload = multer({ storage: storage })
-```
-- Now Install Cloudinary
-
-```
-npm install cloudinary
-```
-- app -> helper -> fileUploader.ts
-
-```ts 
-import multer from 'multer'
-import path from 'path'
-import { v2 as cloudinary } from 'cloudinary'
-
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        // cb(null, '/tmp/my-uploads')
-        cb(null, path.join(process.cwd(), "/uploads")) //C:\Users\Sazid\my-project\uploads
-
-    },
-    filename: function (req, file, cb) {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
-        cb(null, file.fieldname + '-' + uniqueSuffix)
-    }
-})
-
-const upload = multer({ storage: storage })
-
-// for cloudinary 
-const uploadToCloudinary =  async (file : Express.Multer.File) =>{
-    
-}
+export const UserService = {
+  getAllFromDB,
+};
 ```
 
-## 57-4 Implementing Request Validation Middleware & Patient Creation with Zod Schema
-![alt text](image-6.png)
-- Lets make the mechanism for taking the image to the working directory 
-
-![alt text](image-7.png)
-
-- we have to parse the data then we have to work with it 
-- For this we need to add a zod validation 
-- install zod 
+## 58-2 Fetch All Users with Searching and Sorting
 
 ```
-npm install zod
+{{URL}}/user?sortBy=createdAt&sortOrder=desc
 ```
-- middleware concept 
 
-![alt text](image-8.png)
-
-- user.validation.ts 
-
-```ts 
-import z from "zod";
-
-const createPatientValidationSchema = z.object({
-    password: z.string(),
-    patient: {
-        name: z.string({
-            error: "Name is Required"
-        }),
-        email: z.string({
-            error: "Email Is Required"
-        }),
-        address: z.string().optional()
-    }
-})
-
-export const UserValidation = {
-    createPatientValidationSchema
-}
-```
-- lets make the middleware first for checking for all then passing to next 
+- user.controller.ts
 
 ```ts
-import { NextFunction, Request, Response } from "express";
-import { ZodObject } from "zod";
-
-const validateRequest = (schema: ZodObject) => async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        await schema.parseAsync({
-            body: req.body
-        })
-        return next() // this will pass to the next middleware or lastly will go to the controller if no more middleware 
-    } catch (error) {
-        next(error)
-    }
-}
-
-export default validateRequest
-```
-
-## 57-5 Handling Image Upload using Multer
-
-![alt text](image-9.png)
-
-- app-> helper -> fileUploader.ts 
-
-```ts 
-
-import path from 'path'
-import { v2 as cloudinary } from 'cloudinary'
-import multer from 'multer'
-
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        // cb(null, '/tmp/my-uploads')
-        cb(null, path.join(process.cwd(), "/uploads")) //C:\Users\Sazid\my-project\uploads
-
-    },
-    filename: function (req, file, cb) {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
-        cb(null, file.fieldname + '-' + uniqueSuffix)
-    }
-})
-
-const upload = multer({ storage: storage })
-
-// for cloudinary 
-const uploadToCloudinary = async (file: Express.Multer.File) => {
-
-}
-
-export const fileUploader = {
-    upload
-}
-```
-- user.routes.ts 
-
-```ts 
-import express, { NextFunction, Request, Response } from 'express'
-import { UserController } from './user.controller'
-import { fileUploader } from '../../helper/fileUploader'
-import { UserValidation } from './user.validation'
-
-const router = express.Router()
-
-router.post("/create-patient",
-    fileUploader.upload.single('file'),
-    (req: Request, res: Response, next: NextFunction) => {
-        req.body = UserValidation.createPatientValidationSchema.parse(JSON.parse(req.body.data))
-        return UserController.createPatient(req, res, next)
-    },
-
-)
-
-export const UserRoutes = router 
-```
-
-- user.controller.ts 
-
-```ts 
 import { Request, Response } from "express";
 import catchAsync from "../../shared/catchAsync";
 import { UserService } from "./user.service";
 import sendResponse from "../../shared/sendResponse";
 
-const createPatient = catchAsync(async (req: Request, res: Response) => {
-    console.log("Patient Created! ", req.body)
-    const result = await UserService.createPatient(req.body)
+const getAllFromDB = catchAsync(async (req: Request, res: Response) => {
+  const { page, limit, searchTerm, sortBy, sortOrder } = req.query;
+  const result = await UserService.getAllFromDB({
+    page: Number(page),
+    limit: Number(limit),
+    searchTerm,
+    sortBy,
+    sortOrder,
+  });
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: "User Retrieved Successfully",
+    data: result,
+  });
+});
 
-    console.log(req.body)
+export const UserController = {
+  getAllFromDB,
+};
+```
 
+- user.service.ts
+
+```ts
+import bcrypt from "bcryptjs";
+import { prisma } from "../../shared/prisma";
+import { Request } from "express";
+
+const getAllFromDB = async ({
+  page,
+  limit,
+  searchTerm,
+  sortBy,
+  sortOrder,
+}: {
+  page: number;
+  limit: number;
+  searchTerm?: any;
+  sortBy: any;
+  sortOrder: any;
+}) => {
+  const pageNumber = page || 1;
+  const limitNumber = limit || 10;
+
+  const skip = (pageNumber - 1) * limitNumber;
+  const result = await prisma.user.findMany({
+    skip,
+    take: limitNumber,
+    where: {
+      email: {
+        contains: searchTerm,
+        mode: "insensitive",
+      },
+    },
+    orderBy:
+      sortBy && sortOrder
+        ? {
+            [sortBy]: sortOrder,
+          }
+        : {
+            createdAt: "asc",
+          },
+  });
+  return result;
+};
+
+export const UserService = {
+  getAllFromDB,
+};
+```
+
+## 58-3 Fetch All Users with Filtering, 58-4 Implement Pick Function for Query Parameters
+
+- helpers -> pick.ts
+
+```ts
+const pick = <T extends Record<string, unknown>, K extends keyof T>(
+  obj: T,
+  keys: K[]
+): Partial<T> => {
+  console.log({ obj, keys });
+
+  const finalObject: Partial<T> = {};
+
+  for (const key of keys) {
+    if (obj && Object.hasOwnProperty.call(obj, key)) {
+      finalObject[key] = obj[key];
+    }
+  }
+
+// Object.hasOwnProperty.call(obj, key) checks safely if the obj has its own property key. Using call() avoids issues if obj has a custom hasOwnProperty method or if it was shadowed.Also ensures obj is not null or undefined.
+
+  console.log(finalObject);
+
+  return finalObject;
+};
+
+export default pick;
+```
+
+```ts
+<T extends Record<string, unknown>>
+
+T is a generic type parameter representing the type of the input object.
+
+The constraint extends Record<string, unknown> means:
+
+T must be an object whose keys are strings, and whose values can be anything (unknown).
+
+K extends keyof T
+
+K is another generic type parameter.
+
+keyof T means all the keys of the object T.
+
+So K must be one (or more) of the keys in T.
+
+Parameters:
+
+obj: T → the object you want to extract properties from.
+
+keys: K[] → an array of property names (keys) you want to "pick" from obj.
+
+Return type:
+
+```
+
+- user.controller.ts 
+
+```ts 
+const getAllFromDB = catchAsync(async (req: Request, res: Response) => {
+    // common  -> page page, limit, sortBy, sortOrder, --> pagination, sorting
+    // random -> fields , searchTerm --> searching, filtering 
+
+    const options = pick(req.query, ["page", "limit", "sortBy", "sortOrder"])
+
+
+
+
+    const { page, limit, searchTerm, sortBy, sortOrder, role, status } = req.query
+    const result = await UserService.getAllFromDB({ page: Number(page), limit: Number(limit), searchTerm, sortBy, sortOrder, role, status })
     sendResponse(res, {
-        statusCode: 201,
+        statusCode: 200,
         success: true,
-        message: "Patient Created Successfully",
+        message: "User Retrieved Successfully",
         data: result
     })
 })
-
-
-export const UserController = {
-    createPatient
-}
 ```
-## 57-6 Parsing Data & Preparing Image for Cloudinary Upload
-- update in user.validation.ts 
+
+## 58-5 Create Pagination Helper Function, 58-6 Apply Prisma Where Conditions for User Data Retrieval, 58-7 Overview of Metadata, Searching, Sorting, Filtering & Pagination
+
+- helper -> pick.ts 
 
 ```ts 
-import z from "zod";
+const pick = <T extends Record<string, unknown>, K extends keyof T>(obj: T, keys: K[]): Partial<T> => {
+    console.log({ obj, keys })
 
-const createPatientValidationSchema = z.object({
-    password: z.string(),
-    patient: z.object(
-        {
-            name: z.string().nonempty("Name is Required"),
-            email: z.string().nonempty("Email Is Required"),
-            address: z.string().optional()
+    const finalObject: Partial<T> = {};
+
+    for (const key of keys) {
+        if (obj && Object.hasOwnProperty.call(obj, key)) {
+            finalObject[key] = obj[key]
         }
-    )
-})
+    }
 
-export const UserValidation = {
-    createPatientValidationSchema
+    console.log(finalObject)
+
+    return finalObject
 }
+
+export default pick
+```
+
+- helper -> paginationHelper.ts
+
+```ts 
+
+type IOptions = {
+    page?: string | number;
+    limit?: string | number;
+    sortBy?: string;
+    sortOrder?: string
+}
+
+type IOptionsResult = {
+    page: number;
+    limit: number;
+    skip: number;
+    sortBy: string;
+    sortOrder: string
+}
+const calculatePagination = (options: IOptions): IOptionsResult => {
+    const page: number = Number(options.page) || 1
+    const limit: number = Number(options.limit) || 10
+    const skip: number = (Number(page - 1)) * limit
+
+    const sortBy: string = options.sortBy || "createdAt";
+    const sortOrder: string = options.sortOrder || "desc"
+
+    return {
+        page,
+        limit,
+        skip,
+        sortBy,
+        sortOrder
+    }
+}
+
+export const paginationHelper = {
+    calculatePagination
+}
+```
+
+- user.constant.ts 
+
+```ts 
+export const userSearchableFields = ["email"]
+export const userFilterableField = ["status", "role", "email", "searchTerm"]
 ```
 - user.controller.ts 
 
@@ -418,26 +313,46 @@ import { Request, Response } from "express";
 import catchAsync from "../../shared/catchAsync";
 import { UserService } from "./user.service";
 import sendResponse from "../../shared/sendResponse";
+import pick from "../../helper/pick";
+import { userFilterableField } from "./user.contant";
 
-const createPatient = catchAsync(async (req: Request, res: Response) => {
-    // console.log("Patient Created! ", req.body)
-    const result = await UserService.createPatient(req)
 
-    // console.log(req.body)
 
+
+
+const getAllFromDB = catchAsync(async (req: Request, res: Response) => {
+    // common  -> page page, limit, sortBy, sortOrder, --> pagination, sorting
+    // random -> fields , searchTerm --> searching, filtering 
+
+    // const filters = pick(req.query, ["status", "role", "email", "searchTerm"])
+
+    // const options = pick(req.query, ["page", "limit", "sortBy", "sortOrder"])
+
+    const filters = pick(req.query, userFilterableField)
+
+    const options = pick(req.query, ["page", "limit", "sortBy", "sortOrder"])
+
+
+
+
+    // const { page, limit, searchTerm, sortBy, sortOrder, role, status } = req.query
+    const result = await UserService.getAllFromDB(filters, options)
     sendResponse(res, {
-        statusCode: 201,
+        statusCode: 200,
         success: true,
-        message: "Patient Created Successfully",
-        data: result
+        message: "User Retrieved Successfully",
+        meta : result.meta,
+        data: result.data
     })
 })
 
 
+
 export const UserController = {
-    createPatient
+    getAllFromDB
 }
 ```
+
 - user.service.ts 
 
 ```ts 
@@ -446,402 +361,68 @@ import { createPatientInput } from "./user.interface";
 import { prisma } from "../../shared/prisma";
 import { Request } from "express";
 import { fileUploader } from "../../helper/fileUploader";
+import { Admin, Doctor, Prisma, UserRole } from "@prisma/client";
+import { paginationHelper } from "../../helper/paginationHelper";
+import { userSearchableFields } from "./user.contant";
 
-const createPatient = async (req: Request) => {
 
-    if (req.file) {
-        const uploadResult = await fileUploader.uploadToCloudinary(req.file)
-        console.log(uploadResult)
-    }
+const getAllFromDB = async (params: any, options: any) => {
+    const { page, limit, skip, sortBy, sortOrder } = paginationHelper.calculatePagination(options)
+    const { searchTerm, ...filterData } = params
 
-    const hashedPassword = await bcrypt.hash(req.body.password, 10)
+    const andConditions: Prisma.UserWhereInput[] = []
 
-    const result = await prisma.$transaction(async (tnx) => {
-        await tnx.user.create({
-            data: {
-                email: req.body.email,
-                password: hashedPassword
-            }
+    // UserWhereInput this means and condition
+
+    const whereConditions: Prisma.UserWhereInput = andConditions.length > 0 ? {
+        AND: andConditions
+    } : {}
+
+    if (searchTerm) {
+        andConditions.push({
+            OR: userSearchableFields.map(field => ({
+                [field]: {
+                    contains: searchTerm,
+                    mode: "insensitive"
+                }
+            }))
         })
+    }
 
-        return await tnx.patient.create({
-            data: {
-                name: req.body.name,
-                email: req.body.email
-            }
+    if (Object.keys(filterData.length > 0)) {
+        andConditions.push({
+            AND: Object.keys(filterData).map(key => ({
+                [key]: {
+                    equals: (filterData as any)[key]
+                }
+            }))
         })
-    })
-
-    return result
-}
-
-export const UserService = {
-    createPatient
-}
-```
-- fileUploader.ts 
-
-```ts 
-
-import path from 'path'
-import { v2 as cloudinary } from 'cloudinary'
-import multer from 'multer'
-
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        // cb(null, '/tmp/my-uploads')
-        cb(null, path.join(process.cwd(), "/uploads")) //C:\Users\Sazid\my-project\uploads
-
-    },
-    filename: function (req, file, cb) {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
-        cb(null, file.fieldname + '-' + uniqueSuffix)
     }
-})
 
-const upload = multer({ storage: storage })
-
-// for cloudinary 
-const uploadToCloudinary = async (file: Express.Multer.File) => {
-    console.log("file", file)
-}
-
-export const fileUploader = {
-    upload,
-    uploadToCloudinary
-}
-```
-
-## 57-7 Uploading Image to Cloudinary
-- fileUploader.ts 
-
-```ts 
-
-import path from 'path'
-import { v2 as cloudinary } from 'cloudinary'
-import multer from 'multer'
-import config from '../../config'
-
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        // cb(null, '/tmp/my-uploads')
-        cb(null, path.join(process.cwd(), "/uploads")) //C:\Users\Sazid\my-project\uploads
-
-    },
-    filename: function (req, file, cb) {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
-        cb(null, file.fieldname + '-' + uniqueSuffix)
-    }
-})
-
-const upload = multer({ storage: storage })
-
-// for cloudinary 
-const uploadToCloudinary = async (file: Express.Multer.File) => {
-    console.log("file", file)
-
-    cloudinary.config({
-        cloud_name: config.cloudinary.cloud_name,
-        api_key: config.cloudinary.api_key,
-        api_secret: config.cloudinary.api_secret
-    });
-
-    // Upload an image
-    const uploadResult = await cloudinary.uploader
-        .upload(
-            file.path, {
-            public_id: file.filename,
+    const result = await prisma.user.findMany({
+        skip,
+        take: limit,
+        where: whereConditions,
+        orderBy: {
+            [sortBy]: sortOrder
         }
-        )
-        .catch((error) => {
-            console.log(error);
-        });
-
-    console.log({uploadResult});
-
-    return uploadResult
-}
-
-
-
-
-
-
-export const fileUploader = {
-    upload,
-    uploadToCloudinary
-}
-```
-
-- user.service.ts 
-
-```ts
-import bcrypt from "bcryptjs";
-import { createPatientInput } from "./user.interface";
-import { prisma } from "../../shared/prisma";
-import { Request } from "express";
-import { fileUploader } from "../../helper/fileUploader";
-
-const createPatient = async (req: Request) => {
-
-    if (req.file) {
-        const uploadResult = await fileUploader.uploadToCloudinary(req.file)
-        console.log(uploadResult)
-        req.body.patient.profilePhoto = uploadResult?.secure_url
-    }
-
-    const hashedPassword = await bcrypt.hash(req.body.password, 10)
-
-    const result = await prisma.$transaction(async (tnx) => {
-        await tnx.user.create({
-            data: {
-                email: req.body.patient.email,
-                password: hashedPassword
-            }
-        })
-
-        return await tnx.patient.create({
-            data: req.body.patient
-        })
     })
-
-    return result
-}
-
-export const UserService = {
-    createPatient
-}
-```
-
-## 57-8 Implementing User Login
-- lets login with the created user. 
-- auth.routes.ts 
-
-```ts 
-import express, { NextFunction, Request, Response } from 'express'
-import { AuthController } from './auth.controller'
-
-const router = express.Router()
-
-router.post("/login", AuthController.login)
-
-export const AuthRoutes = router 
-```
-- auth.controller.ts 
-
-```ts 
-import { Request, Response } from "express";
-import catchAsync from "../../shared/catchAsync";
-
-import sendResponse from "../../shared/sendResponse";
-import { AuthServices } from "./auth.service";
-
-const login = catchAsync(async (req: Request, res: Response) => {
-
-    const result = await AuthServices.login(req.body)
-
-    sendResponse(res, {
-        statusCode: 201,
-        success: true,
-        message: "User Logged In Successfully",
+    const total = await prisma.user.count({
+        where: whereConditions
+    })
+    return {
+        meta: {
+            page,
+            limit,
+            total
+        },
         data: result
-    })
-})
-
-
-export const AuthController = {
-    login
-}
-```
-- auth.service.ts 
-
-```ts 
-import { UserStatus } from "@prisma/client"
-import { prisma } from "../../shared/prisma"
-import bcrypt from 'bcryptjs';
-
-const login = async (payload: { email: string, password: string }) => {
-    const user = await prisma.user.findUniqueOrThrow({
-        where: {
-            email: payload.email,
-            status: UserStatus.ACTIVE
-        }
-    })
-
-    const isCorrectPassword = await bcrypt.compare(payload.password, user.password)
-
-    if(!isCorrectPassword){
-        throw new Error("Password Incorrect")
-    }
-    // if password correct we will generate token 
-}
-
-export const AuthServices = {
-    login
-}
-```
-
-## 57-9 Generating JWT Token
-
-- install jwt 
-
-```
-npm i jsonwebtoken
-```
-- import types for jwt 
-
-```
-npm i --save-dev @types/jsonwebtoken
-```
-- auth.service.ts 
-
-```ts 
-import { UserStatus } from "@prisma/client"
-import { prisma } from "../../shared/prisma"
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken'
-
-const login = async (payload: { email: string, password: string }) => {
-    console.log(payload)
-    const user = await prisma.user.findUniqueOrThrow({
-        where: {
-            email: payload.email,
-            status: UserStatus.ACTIVE
-        }
-    })
-
-    console.log(user)
-
-    const isCorrectPassword = await bcrypt.compare(payload.password, user.password)
-
-    if(!isCorrectPassword){
-        throw new Error("Password Incorrect")
-    }
-    //  generate access token 
-    const accessToken = jwt.sign({email: user.email, role: user.role}, "abc", {
-        algorithm:"HS256",
-        expiresIn :"1h"
-    })
-
-    // generate refresh token 
-        const refreshToken = jwt.sign({email: user.email, role: user.role}, "abc", {
-        algorithm:"HS256",
-        expiresIn :"90d"
-    })
-
-
-    return {
-        accessToken,
-        refreshToken
     }
 }
 
-export const AuthServices = {
-    login
-}
-```
 
-## 57-10 Storing Token in Cookies
-- helpers -> jwtHelper.ts 
+export const UserService = {
 
-```ts 
-import jwt, { Secret, SignOptions } from "jsonwebtoken";
-const generateToken = (payload: any, secret: Secret, expiresIn: string) => {
-    //  generate access token 
-    const token = jwt.sign(payload, secret, {
-        algorithm: "HS256",
-        expiresIn
-    } as SignOptions
-    )
-
-    return token
-}
-
-export const jwtHelper ={
-    generateToken
-}
-```
-- auth.service.ts 
-
-```ts 
-import { UserStatus } from "@prisma/client"
-import { prisma } from "../../shared/prisma"
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken'
-import { jwtHelper } from "../../helper/jwtHelper";
-
-const login = async (payload: { email: string, password: string }) => {
-    console.log(payload)
-    const user = await prisma.user.findUniqueOrThrow({
-        where: {
-            email: payload.email,
-            status: UserStatus.ACTIVE
-        }
-    })
-
-    console.log(user)
-
-    const isCorrectPassword = await bcrypt.compare(payload.password, user.password)
-
-    if(!isCorrectPassword){
-        throw new Error("Password Incorrect")
-    }
-    //  generate access token 
-    const accessToken = jwtHelper.generateToken({email: user.email, role: user.role}, "abc","1h")
-
-    // generate refresh token 
-        const refreshToken = jwtHelper.generateToken({email: user.email, role: user.role}, "abc","90d")
-
-
-    return {
-        accessToken,
-        refreshToken,
-        needPasswordChange : user.needPasswordChange
-    }
-}
-
-export const AuthServices = {
-    login
-}
-```
-- set in cookies 
-
-```ts 
-import { Request, Response } from "express";
-import catchAsync from "../../shared/catchAsync";
-
-import sendResponse from "../../shared/sendResponse";
-import { AuthServices } from "./auth.service";
-
-const login = catchAsync(async (req: Request, res: Response) => {
-
-    const result = await AuthServices.login(req.body)
-
-    const { accessToken, refreshToken, needPasswordChange } = result
-
-    res.cookie("accessToken", accessToken, {
-        secure: true,
-        httpOnly: true,
-        sameSite: "none",
-        maxAge: 1000 * 60 * 60
-    })
-    res.cookie("refreshToken", refreshToken, {
-        secure: true,
-        httpOnly: true,
-        sameSite: "none",
-        maxAge: 1000 * 60 * 60 * 24 * 90
-    })
-
-    sendResponse(res, {
-        statusCode: 201,
-        success: true,
-        message: "User Logged In Successfully",
-        data: { needPasswordChange }
-    })
-})
-
-
-export const AuthController = {
-    login
+    getAllFromDB
 }
 ```
