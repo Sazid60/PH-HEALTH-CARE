@@ -95,7 +95,7 @@ const createDoctor = async (req: Request): Promise<Doctor> => {
 };
 
 
-const getAllFromDB = async ({ page, limit, searchTerm, sortBy, sortOrder }: { page: number, limit: number, searchTerm?: any, sortBy: any, sortOrder: any }) => {
+const getAllFromDB = async ({ page, limit, searchTerm, sortBy, sortOrder, role, status }: { page: number, limit: number, searchTerm?: any, sortBy: any, sortOrder: any, role:any, status:any }) => {
     const pageNumber = page || 1;
     const limitNumber = limit || 10;
 
