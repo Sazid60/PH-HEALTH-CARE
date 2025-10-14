@@ -1,5 +1,7 @@
 import { addHours, addMinutes, format } from "date-fns";
 import { prisma } from "../../shared/prisma";
+import { IOptions, paginationHelper } from "../../helper/paginationHelper";
+import { Prisma } from "@prisma/client";
 
 // ========================
 // 🧩 PURPOSE OF FUNCTION
@@ -72,7 +74,7 @@ const insertIntoDB = async (payload: any) => {
         // this loop will create slots like:
         // 09:00–09:30, 09:30–10:00, 10:00–10:30, ...
         while (startDateTime < endDateTime) {
-            
+
             // Define start and end of the current 30-minute slot
             const slotStartDateTime = startDateTime;                 // current start time
             const slotEndDateTime = addMinutes(startDateTime, intervalTime); // add 30 minutes for the end time
@@ -112,8 +114,60 @@ const insertIntoDB = async (payload: any) => {
     return schedules;
 };
 
+const schedulesForDoctor = async (filters: any, options: IOptions) => {
+    const { page, limit, skip, sortBy, sortOrder } = paginationHelper.calculatePagination(options)
+    const { startDateTime: filterStartDateTime, endDateTime: filterEndDateTime } = filters
+
+    const andConditions: Prisma.ScheduleWhereInput[] = [];
+
+    if (filterStartDateTime && filterEndDateTime) {
+        andConditions.push({
+            AND: [
+                {
+                    startDateTime: {
+                        gte: filterStartDateTime
+                    }
+                },
+                {
+                    endDateTime: {
+                        lte: filterEndDateTime
+                    }
+                }
+            ]
+        })
+    }
+
+    const whereConditions: Prisma.ScheduleWhereInput = andConditions.length > 0 ? {
+        AND: andConditions
+    } : {}
+
+    const result = await prisma.schedule.findMany({
+        where: whereConditions,
+        skip,
+        take: limit,
+        orderBy: {
+            [sortBy]: sortOrder
+        }
+    })
+
+    const total = await prisma.schedule.count({
+        where: whereConditions
+    });
+
+    return {
+        meta: {
+            page,
+            limit,
+            total
+        },
+        data: result
+    };
+
+}
+
 
 // Export this service so it can be imported in other modules, like controllers
 export const ScheduleService = {
-    insertIntoDB
+    insertIntoDB,
+    schedulesForDoctor
 };

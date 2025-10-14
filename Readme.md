@@ -79,7 +79,7 @@ model Doctor {
 - A Doctor can have many Schedules.
 - A Schedule can belong to many Doctors.
 
-## 59-3 Creating Schedule – Part 1, 59-4 Creating Schedule – Part 2
+## 59-3 Creating Schedule – Part 1, 59-4 Creating Schedule – Part 2,3
 - install date fan 
 
 ```
@@ -277,6 +277,132 @@ const insertIntoDB = async (payload: any) => {
 // Export this service so it can be imported in other modules, like controllers
 export const ScheduleService = {
     insertIntoDB
+};
+
+```
+
+```json
+{
+    "startDate": "2025-10-17",
+    "endDate": "2025-10-17",
+    "startTime":"10:00",
+    "endTime":"11:00"
+}
+```
+
+## 59-6 Retrieving Schedules for a Specific Doctor
+
+```
+{{URL}}/schedule?startDateTime=2025-10-16T11:00:00.000Z&endDateTime=2025-10-17T11:00:00.000Z
+```
+
+- user.routes.ts 
+
+```ts 
+import express from 'express'
+import { ScheduleController } from './schedule.controller'
+
+
+
+const router = express.Router()
+
+router.get("/", ScheduleController.schedulesForDoctor)
+
+export const ScheduleRoutes = router
+```
+
+- user.controller.ts 
+
+```ts 
+import { Request, Response } from "express";
+import catchAsync from "../../shared/catchAsync";
+import sendResponse from "../../shared/sendResponse";
+import { ScheduleService } from "./schedule.service";
+import pick from "../../helper/pick";
+
+
+const schedulesForDoctor = catchAsync(async (req: Request, res: Response) => {
+        const options = pick(req.query, ["page", "limit", "sortBy", "sortOrder"]) // pagination and sorting
+        const filters = pick(req.query,["startDateTime", "endDateTime"])
+    const result = await ScheduleService.schedulesForDoctor(filters, options)
+
+    sendResponse(res, {
+        statusCode: 201,
+        success: true,
+        message: "Schedule fetched Successfully",
+        data: result
+    })
+})
+
+export const ScheduleController = {
+    schedulesForDoctor
+}
+```
+
+- user.service.ts 
+
+```ts 
+import { addHours, addMinutes, format } from "date-fns";
+import { prisma } from "../../shared/prisma";
+import { IOptions, paginationHelper } from "../../helper/paginationHelper";
+import { Prisma } from "@prisma/client";
+
+
+const schedulesForDoctor = async (filters: any, options: IOptions) => {
+    const { page, limit, skip, sortBy, sortOrder } = paginationHelper.calculatePagination(options)
+    const { startDateTime: filterStartDateTime, endDateTime: filterEndDateTime } = filters
+
+    const andConditions: Prisma.ScheduleWhereInput[] = [];
+
+    if (filterStartDateTime && filterEndDateTime) {
+        andConditions.push({
+            AND: [
+                {
+                    startDateTime: {
+                        gte: filterStartDateTime
+                    }
+                },
+                {
+                    endDateTime: {
+                        lte: filterEndDateTime
+                    }
+                }
+            ]
+        })
+    }
+
+    const whereConditions: Prisma.ScheduleWhereInput = andConditions.length > 0 ? {
+        AND: andConditions
+    } : {}
+
+    const result = await prisma.schedule.findMany({
+        where: whereConditions,
+        skip,
+        take: limit,
+        orderBy: {
+            [sortBy]: sortOrder
+        }
+    })
+
+    const total = await prisma.schedule.count({
+        where: whereConditions
+    });
+
+    return {
+        meta: {
+            page,
+            limit,
+            total
+        },
+        data: result
+    };
+
+}
+
+
+// Export this service so it can be imported in other modules, like controllers
+export const ScheduleService = {
+    schedulesForDoctor
 };
 
 ```
