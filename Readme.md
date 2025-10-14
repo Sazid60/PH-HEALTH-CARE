@@ -1,660 +1,393 @@
-# USER-RETRIEVAL-QUERY-OPTIMIZATION-AND-AUTHENTICATION-MIDDLEWARE
+# Doctor-Schedule-Management
 
-## 58-1 Fetch All Users with Pagination
+GitHub Link: https://github.com/Apollo-Level2-Web-Dev/ph-health-care-server/tree/part-4
 
-- user.routes.ts
+## 59-1 Planning Schedule and Doctor Schedule Creation
 
-```ts
-import express, { NextFunction, Request, Response } from "express";
-import { UserController } from "./user.controller";
+![alt text](image.png)
+
+- we want the time slot made by admin. 
+
+![alt text](image-2.png)
+
+- If we keep id and schedule in a table then the relation will be build. It like admin will add the schedule and that will be referenced from the schedule table to the doctors.
+- The tables are doctor table, schedule table and doctorid+scheduleid table. 
+- We will keep status for that the slot has been booked will never be available on that day. 
+
+## 59-2 Writing Prisma Schema for Schedule and Doctor Schedule
+
+![alt text](image-4.png)
+
+- We will take start Time and end time and our system will make slot of 30 min for each patient 
+
+- prisma -0> schema -> schedule.prisma
+
+```prisma 
+model Schedule {
+    id              String            @id @default(uuid())
+    startDateTime   DateTime
+    endDateTime     DateTime
+    createdAt       DateTime          @default(now())
+    updatedAt       DateTime          @updatedAt
+    doctorSchedules DoctorSchedules[]
+
+    @@map("schedules")
+}
+
+model DoctorSchedules {
+    doctorId   String
+    doctor     Doctor   @relation(fields: [doctorId], references: [id])
+    scheduleId String
+    schedule   Schedule @relation(fields: [scheduleId], references: [id])
+    isBooked   Boolean  @default(false)
+    createdAt  DateTime @default(now())
+    updatedAt  DateTime @updatedAt
+
+    @@id([doctorId, scheduleId]) // composite primary key 
+    // we have made primary key because these two needs to be different and because a doctor will not be able to see multiple patient at a time 
+    @@map("doctor_schedules")
+}
+```
+- user.prisma -> Doctor model 
+
+```prisma
+model Doctor {
+  id                  String   @id @default(uuid())
+  name                String
+  email               String   @unique
+  profilePhoto        String?
+  contactNumber       String
+  address             String
+  registrationNumber  String
+  experience          Int      @default(0)
+  gender              Gender
+  appointmentFee      Int
+  qualification       String
+  currentWorkingPlace String
+  designation         String
+  isDeleted           Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  user                User     @relation(fields: [email], references: [email])
+
+  doctorSchedules DoctorSchedules[]
+
+  @@map("doctors")
+}
+```
+
+- A Doctor can have many Schedules.
+- A Schedule can belong to many Doctors.
+
+## 59-3 Creating Schedule – Part 1, 59-4 Creating Schedule – Part 2,3
+- install date fan 
+
+```
+npm i date-fns
+```
+- routes -> index.ts 
+
+```ts 
+import express from 'express';
+import { UserRoutes } from '../modules/user/user.routes';
+import { AuthRoutes } from '../modules/auth/auth.route';
+import { ScheduleRoutes } from '../modules/schedule/schedule.routes';
+
 
 const router = express.Router();
 
-router.get("/", UserController.getAllFromDB);
-
-export const UserRoutes = router;
-```
-
-- user.controller.ts
-
-```ts
-import { Request, Response } from "express";
-import catchAsync from "../../shared/catchAsync";
-import { UserService } from "./user.service";
-import sendResponse from "../../shared/sendResponse";
-
-const getAllFromDB = catchAsync(async (req: Request, res: Response) => {
-  const { page, limit } = req.query;
-  const result = await UserService.getAllFromDB({
-    page: Number(page),
-    limit: Number(limit),
-  });
-  sendResponse(res, {
-    statusCode: 200,
-    success: true,
-    message: "User Retrieved Successfully",
-    data: result,
-  });
-});
-
-export const UserController = {
-  getAllFromDB,
-};
-```
-
-- user.service.ts
-
-```
-{{URL}}/user?limit=11&page=1
-```
-
-```ts
-import bcrypt from "bcryptjs";
-
-const getAllFromDB = async ({
-  page,
-  limit,
-}: {
-  page: number;
-  limit: number;
-}) => {
-  const skip = (page - 1) * limit;
-  const result = await prisma.user.findMany({
-    skip,
-    take: limit,
-  });
-  return result;
-};
-
-export const UserService = {
-  getAllFromDB,
-};
-```
-
-## 58-2 Fetch All Users with Searching and Sorting
-
-```
-{{URL}}/user?sortBy=createdAt&sortOrder=desc
-```
-
-- user.controller.ts
-
-```ts
-import { Request, Response } from "express";
-import catchAsync from "../../shared/catchAsync";
-import { UserService } from "./user.service";
-import sendResponse from "../../shared/sendResponse";
-
-const getAllFromDB = catchAsync(async (req: Request, res: Response) => {
-  const { page, limit, searchTerm, sortBy, sortOrder } = req.query;
-  const result = await UserService.getAllFromDB({
-    page: Number(page),
-    limit: Number(limit),
-    searchTerm,
-    sortBy,
-    sortOrder,
-  });
-  sendResponse(res, {
-    statusCode: 200,
-    success: true,
-    message: "User Retrieved Successfully",
-    data: result,
-  });
-});
-
-export const UserController = {
-  getAllFromDB,
-};
-```
-
-- user.service.ts
-
-```ts
-import bcrypt from "bcryptjs";
-import { prisma } from "../../shared/prisma";
-import { Request } from "express";
-
-const getAllFromDB = async ({
-  page,
-  limit,
-  searchTerm,
-  sortBy,
-  sortOrder,
-}: {
-  page: number;
-  limit: number;
-  searchTerm?: any;
-  sortBy: any;
-  sortOrder: any;
-}) => {
-  const pageNumber = page || 1;
-  const limitNumber = limit || 10;
-
-  const skip = (pageNumber - 1) * limitNumber;
-  const result = await prisma.user.findMany({
-    skip,
-    take: limitNumber,
-    where: {
-      email: {
-        contains: searchTerm,
-        mode: "insensitive",
-      },
+const moduleRoutes = [
+    {
+        path: '/user',
+        route: UserRoutes
     },
-    orderBy:
-      sortBy && sortOrder
-        ? {
-            [sortBy]: sortOrder,
-          }
-        : {
-            createdAt: "asc",
-          },
-  });
-  return result;
-};
-
-export const UserService = {
-  getAllFromDB,
-};
-```
-
-## 58-3 Fetch All Users with Filtering, 58-4 Implement Pick Function for Query Parameters
-
-- helpers -> pick.ts
-
-```ts
-const pick = <T extends Record<string, unknown>, K extends keyof T>(
-  obj: T,
-  keys: K[]
-): Partial<T> => {
-  console.log({ obj, keys });
-
-  const finalObject: Partial<T> = {};
-
-  for (const key of keys) {
-    if (obj && Object.hasOwnProperty.call(obj, key)) {
-      finalObject[key] = obj[key];
+    {
+        path: '/auth',
+        route: AuthRoutes
+    },
+    {
+        path: '/schedule',
+        route: ScheduleRoutes
     }
-  }
+];
 
-  // Object.hasOwnProperty.call(obj, key) checks safely if the obj has its own property key. Using call() avoids issues if obj has a custom hasOwnProperty method or if it was shadowed.Also ensures obj is not null or undefined.
+moduleRoutes.forEach(route => router.use(route.path, route.route))
 
-  console.log(finalObject);
-
-  return finalObject;
-};
-
-export default pick;
+export default router;
 ```
-
-```ts
-<T extends Record<string, unknown>>
-
-T is a generic type parameter representing the type of the input object.
-
-The constraint extends Record<string, unknown> means:
-
-T must be an object whose keys are strings, and whose values can be anything (unknown).
-
-K extends keyof T
-
-K is another generic type parameter.
-
-keyof T means all the keys of the object T.
-
-So K must be one (or more) of the keys in T.
-
-Parameters:
-
-obj: T → the object you want to extract properties from.
-
-keys: K[] → an array of property names (keys) you want to "pick" from obj.
-
-Return type:
-
-```
-
-- user.controller.ts
-
-```ts
-const getAllFromDB = catchAsync(async (req: Request, res: Response) => {
-  // common  -> page page, limit, sortBy, sortOrder, --> pagination, sorting
-  // random -> fields , searchTerm --> searching, filtering
-
-  const options = pick(req.query, ["page", "limit", "sortBy", "sortOrder"]);
-
-  const { page, limit, searchTerm, sortBy, sortOrder, role, status } =
-    req.query;
-  const result = await UserService.getAllFromDB({
-    page: Number(page),
-    limit: Number(limit),
-    searchTerm,
-    sortBy,
-    sortOrder,
-    role,
-    status,
-  });
-  sendResponse(res, {
-    statusCode: 200,
-    success: true,
-    message: "User Retrieved Successfully",
-    data: result,
-  });
-});
-```
-
-## 58-5 Create Pagination Helper Function, 58-6 Apply Prisma Where Conditions for User Data Retrieval, 58-7 Overview of Metadata, Searching, Sorting, Filtering & Pagination
-
-- helper -> pick.ts
-
-```ts
-const pick = <T extends Record<string, unknown>, K extends keyof T>(
-  obj: T,
-  keys: K[]
-): Partial<T> => {
-  console.log({ obj, keys });
-
-  const finalObject: Partial<T> = {};
-
-  for (const key of keys) {
-    if (obj && Object.hasOwnProperty.call(obj, key)) {
-      finalObject[key] = obj[key];
-    }
-  }
-
-  console.log(finalObject);
-
-  return finalObject;
-};
-
-export default pick;
-```
-
-- helper -> paginationHelper.ts
-
-```ts
-type IOptions = {
-  page?: string | number;
-  limit?: string | number;
-  sortBy?: string;
-  sortOrder?: string;
-};
-
-type IOptionsResult = {
-  page: number;
-  limit: number;
-  skip: number;
-  sortBy: string;
-  sortOrder: string;
-};
-const calculatePagination = (options: IOptions): IOptionsResult => {
-  const page: number = Number(options.page) || 1;
-  const limit: number = Number(options.limit) || 10;
-  const skip: number = Number(page - 1) * limit;
-
-  const sortBy: string = options.sortBy || "createdAt";
-  const sortOrder: string = options.sortOrder || "desc";
-
-  return {
-    page,
-    limit,
-    skip,
-    sortBy,
-    sortOrder,
-  };
-};
-
-export const paginationHelper = {
-  calculatePagination,
-};
-```
-
-- user.constant.ts
-
-```ts
-export const userSearchableFields = ["email"];
-export const userFilterableField = ["status", "role", "email", "searchTerm"];
-```
-
-- user.controller.ts
-
-```ts
-import { Request, Response } from "express";
-import catchAsync from "../../shared/catchAsync";
-import { UserService } from "./user.service";
-import sendResponse from "../../shared/sendResponse";
-import pick from "../../helper/pick";
-import { userFilterableField } from "./user.contant";
-
-const getAllFromDB = catchAsync(async (req: Request, res: Response) => {
-  // common  -> page page, limit, sortBy, sortOrder, --> pagination, sorting
-  // random -> fields , searchTerm --> searching, filtering
-
-  // const filters = pick(req.query, ["status", "role", "email", "searchTerm"])
-
-  // const options = pick(req.query, ["page", "limit", "sortBy", "sortOrder"])
-
-  const filters = pick(req.query, userFilterableField);
-
-  const options = pick(req.query, ["page", "limit", "sortBy", "sortOrder"]);
-
-  // const { page, limit, searchTerm, sortBy, sortOrder, role, status } = req.query
-  const result = await UserService.getAllFromDB(filters, options);
-  sendResponse(res, {
-    statusCode: 200,
-    success: true,
-    message: "User Retrieved Successfully",
-    meta: result.meta,
-    data: result.data,
-  });
-});
-
-export const UserController = {
-  getAllFromDB,
-};
-```
-
-- user.service.ts
-
-```ts
-import bcrypt from "bcryptjs";
-import { createPatientInput } from "./user.interface";
-import { prisma } from "../../shared/prisma";
-import { Request } from "express";
-import { fileUploader } from "../../helper/fileUploader";
-import { Admin, Doctor, Prisma, UserRole } from "@prisma/client";
-import { paginationHelper } from "../../helper/paginationHelper";
-import { userSearchableFields } from "./user.contant";
-
-const getAllFromDB = async (params: any, options: IOptions) => {
-    const { page, limit, skip, sortBy, sortOrder } = paginationHelper.calculatePagination(options)
-    const { searchTerm, ...filterData } = params;
-
-    const andConditions: Prisma.UserWhereInput[] = [];
-
-    if (searchTerm) {
-        andConditions.push({
-            OR: userSearchableFields.map(field => ({
-                [field]: {
-                    contains: searchTerm,
-                    mode: "insensitive"
-                }
-            }))
-        })
-    }
-
-    if (Object.keys(filterData).length > 0) {
-        andConditions.push({
-            AND: Object.keys(filterData).map(key => ({
-                [key]: {
-                    equals: (filterData as any)[key]
-                }
-            }))
-        })
-    }
-
-    const whereConditions: Prisma.UserWhereInput = andConditions.length > 0 ? {
-        AND: andConditions
-    } : {}
-
-    const result = await prisma.user.findMany({
-        skip,
-        take: limit,
-
-        where: whereConditions,
-        orderBy: {
-            [sortBy]: sortOrder
-        }
-    });
-
-    const total = await prisma.user.count({
-        where: whereConditions
-    });
-    return {
-        meta: {
-            page,
-            limit,
-            total
-        },
-        data: result
-    };
-}
-
-export const UserService = {
-  getAllFromDB,
-};
-```
-
-## 58-8 Implement Authentication Middleware, 58-9 Debug and Fix Issues in Auth Middleware, 58-10 Final Fixes and Full Module Overview
-- we will verify role from the decoded token and then we will let them see all users 
-- install cookie parser 
-
-```
-npm i cookie-parser
-```
-
-```
-npm i --save-dev @types/cookie-parser
-```
-
-- app.ts use of cookie parser 
+- schedule -> schedule.routes.ts 
 
 ```ts 
-import express, { Application, NextFunction, Request, Response } from 'express';
-import cors from 'cors';
-import globalErrorHandler from './app/middlewares/globalErrorHandler';
-import notFound from './app/middlewares/notFound';
-import config from './config';
-import cookieParser from 'cookie-parser'
+import express from 'express'
+import { ScheduleController } from './schedule.controller'
 
-import router from './app/routes';
-
-const app: Application = express();
-app.use(cors({
-    origin: 'http://localhost:3000',
-    credentials: true
-}));
-
-//parser
-app.use(express.json());
-app.use(cookieParser())
-app.use(express.urlencoded({ extended: true }));
-
-app.use("/api/v1", router)
-
-
-app.get('/', (req: Request, res: Response) => {
-    res.send({
-        message: "Server is running..",
-        environment: config.node_env,
-        uptime: process.uptime().toFixed(2) + " sec",
-        timeStamp: new Date().toISOString()
-    })
-});
-
-
-app.use(globalErrorHandler);
-
-app.use(notFound);
-
-export default app;
-```
-- middlewares -> auth.ts 
-
-```ts 
-import { NextFunction, Request, Response } from "express"
-import { jwtHelper } from "../helper/jwtHelper";
-
-const auth = (...roles: string[]) => {
-    return async (req: Request & { user?: any }, res: Response, next: NextFunction) => {
-        try {
-            const token = req.cookies.accessToken;
-
-            if (!token) {
-                throw new Error("You are Not Authorized!")
-            }
-
-            const verifyUser = jwtHelper.verifyToken(token, "abcd")
-
-            req.user = verifyUser
-
-            if (roles.length && !roles.includes(verifyUser.role)) {
-                throw new Error("You are Not Authorized!")
-            }
-
-            next()
-
-        } catch (error) {
-            next(error)
-        }
-    }
-}
-
-export default auth
-```
-- helper -> jwtHelper.ts 
-
-```ts 
-import jwt, { JwtPayload, Secret, SignOptions } from "jsonwebtoken";
-const generateToken = (payload: any, secret: Secret, expiresIn: string) => {
-    //  generate access token 
-    const token = jwt.sign(payload, secret, {
-        algorithm: "HS256",
-        expiresIn
-    } as SignOptions
-    )
-
-    return token
-}
-
-const verifyToken = (token: string, secret: Secret) => {
-    return jwt.verify(token, secret) as JwtPayload
-}
-
-export const jwtHelper = {
-    generateToken,
-    verifyToken
-}
-```
-- user.route.ts 
-
-```ts 
-import express, { NextFunction, Request, Response } from 'express'
-import { UserController } from './user.controller'
-import { fileUploader } from '../../helper/fileUploader'
-import { UserValidation } from './user.validation'
-import { UserRole } from '@prisma/client'
-import auth from '../../middlewares/auth'
 
 
 const router = express.Router()
 
-router.get("/", auth(UserRole.ADMIN), UserController.getAllFromDB)
+router.post("/", ScheduleController.insertIntoDB)
 
-
-
-export const UserRoutes = router 
+export const ScheduleRoutes = router
 ```
+- schedule -> schedule.controller.ts 
+
+```ts 
+import { Request, Response } from "express";
+import catchAsync from "../../shared/catchAsync";
+import sendResponse from "../../shared/sendResponse";
+import { ScheduleService } from "./schedule.service";
+
+
+
+
+const insertIntoDB = catchAsync(async (req: Request, res: Response) => {
+
+    const result = await ScheduleService.insertIntoDB(req.body)
+
+    sendResponse(res, {
+        statusCode: 201,
+        success: true,
+        message: "Schedule Created Successfully",
+        data: result
+    })
+})
+
+export const ScheduleController = {
+    insertIntoDB
+}
+```
+- schedule -> schedule.service.ts 
+
+```ts 
+import { addHours, addMinutes, format } from "date-fns";
+import { prisma } from "../../shared/prisma";
+
+// ========================
+// 🧩 PURPOSE OF FUNCTION
+// ========================
+// This function takes a date range (startDate → endDate)
+// and a time range (startTime → endTime),
+// then automatically generates 30-minute time slots
+// for each day in that range.
+//
+// Each time slot is stored in the database (if it doesn’t already exist)
+// using Prisma ORM. 
+//
+// Example:
+// Input → startDate: "2025-10-14", endDate: "2025-10-15", startTime: "09:00", endTime: "12:00"
+// Output → Creates time slots like:
+//  2025-10-14 09:00 - 09:30
+//  2025-10-14 09:30 - 10:00
+//  ...
+//  2025-10-15 11:30 - 12:00
+// ========================
+
+const insertIntoDB = async (payload: any) => {
+
+    // Destructure user-provided values from request body or input payload
+    const { startTime, endTime, startDate, endDate } = payload;
+
+    const intervalTime = 30; // each appointment slot will be 30 minutes long
+    const schedules: any[] = []; // this will store all newly created schedule entries
+
+    // Convert plain date strings (like "2025-10-14") into JavaScript Date objects
+    const currentDate = new Date(startDate); // will start from this day
+    const lastDate = new Date(endDate);      // will stop at this day
+
+    // ===============================
+    // 🔁 OUTER LOOP (for each date)
+    // ===============================
+    // This loop will run for each day between startDate → endDate.
+    // Example: if startDate=Oct 14 and endDate=Oct 16,
+    // this loop runs 3 times → Oct 14, 15, 16
+    while (currentDate <= lastDate) {
+
+        // Build a DateTime object for when the workday starts (e.g., "09:00" on this date)
+        const startDateTime = new Date(
+            addMinutes(
+                addHours(
+                    // format(currentDate, "yyyy-MM-dd") converts the Date object to a string like "2025-10-14"
+                    // ❗️But note: passing a string to addHours is logically wrong (addHours expects a Date)
+                    `${format(currentDate, "yyyy-MM-dd")}`,
+                    Number(startTime.split(":")[0]) // Extract the "hour" part from "09:00" → 9
+                ),
+                Number(startTime.split(":")[1])     // Extract the "minute" part from "09:00" → 0
+            )
+        );
+
+        // Build a DateTime object for when the workday ends (e.g., "17:00" on this date)
+        const endDateTime = new Date(
+            addMinutes(
+                addHours(
+                    `${format(currentDate, "yyyy-MM-dd")}`,
+                    Number(endTime.split(":")[0])   // Extract hour part from endTime → e.g. 17
+                ),
+                Number(endTime.split(":")[1])       // Extract minute part → e.g. 0
+            )
+        );
+
+        // ===========================================
+        // 🔁 INNER LOOP (for each time slot of the day)
+        // ===========================================
+        // Example: if startTime=09:00 and endTime=12:00,
+        // this loop will create slots like:
+        // 09:00–09:30, 09:30–10:00, 10:00–10:30, ...
+        while (startDateTime < endDateTime) {
+            
+            // Define start and end of the current 30-minute slot
+            const slotStartDateTime = startDateTime;                 // current start time
+            const slotEndDateTime = addMinutes(startDateTime, intervalTime); // add 30 minutes for the end time
+
+            // Build an object representing this slot (this is what will be saved in DB)
+            const scheduleData = {
+                startDateTime: slotStartDateTime,
+                endDateTime: slotEndDateTime
+            };
+
+            // 🔍 Step 1: Check if a schedule with exactly the same times already exists in DB
+            // We don’t want duplicate schedule slots in the table.
+            const existingSchedule = await prisma.schedule.findFirst({
+                where: scheduleData
+            });
+
+            // ✅ Step 2: If it doesn’t exist, insert it into the database
+            if (!existingSchedule) {
+                const result = await prisma.schedule.create({
+                    data: scheduleData
+                });
+                schedules.push(result); // add the created record to our local array
+            }
+
+            // ⏩ Step 3: Move the start time 30 minutes forward for the next slot
+            // Example: if current slot was 09:00–09:30, next will be 09:30–10:00
+            slotStartDateTime.setMinutes(slotStartDateTime.getMinutes() + intervalTime);
+        }
+
+        // 📅 Step 4: Once we’re done with one full day, move to the next date
+        // This increases "currentDate" by 1 day.
+        // Example: from 2025-10-14 → 2025-10-15
+        currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    // 🧾 Return all newly created schedules so the caller can see what was generated
+    return schedules;
+};
+
+
+// Export this service so it can be imported in other modules, like controllers
+export const ScheduleService = {
+    insertIntoDB
+};
+
+```
+
+```json
+{
+    "startDate": "2025-10-17",
+    "endDate": "2025-10-17",
+    "startTime":"10:00",
+    "endTime":"11:00"
+}
+```
+
+## 
+
+```
+{{URL}}/schedule?startDateTime=2025-10-16T11:00:00.000Z&endDateTime=2025-10-17T11:00:00.000Z
+```
+
+- user.routes.ts 
+
+```ts 
+import express from 'express'
+import { ScheduleController } from './schedule.controller'
+
+
+
+const router = express.Router()
+
+router.get("/", ScheduleController.schedulesForDoctor)
+
+export const ScheduleRoutes = router
+```
+
 - user.controller.ts 
 
 ```ts 
 import { Request, Response } from "express";
 import catchAsync from "../../shared/catchAsync";
-import { UserService } from "./user.service";
 import sendResponse from "../../shared/sendResponse";
+import { ScheduleService } from "./schedule.service";
 import pick from "../../helper/pick";
-import { userFilterableFields } from "./user.constant";
 
 
+const schedulesForDoctor = catchAsync(async (req: Request, res: Response) => {
+        const options = pick(req.query, ["page", "limit", "sortBy", "sortOrder"]) // pagination and sorting
+        const filters = pick(req.query,["startDateTime", "endDateTime"])
+    const result = await ScheduleService.schedulesForDoctor(filters, options)
 
-const getAllFromDB = catchAsync(async (req: Request, res: Response) => {
-    // common  -> page page, limit, sortBy, sortOrder, --> pagination, sorting
-    // random -> fields , searchTerm --> searching, filtering 
-
-    // const filters = pick(req.query, ["status", "role", "email", "searchTerm"])
-
-    // const options = pick(req.query, ["page", "limit", "sortBy", "sortOrder"])
-
-    const filters = pick(req.query, userFilterableFields) // searching , filtering
-    const options = pick(req.query, ["page", "limit", "sortBy", "sortOrder"]) // pagination and sorting
-
-
-
-
-    // const { page, limit, searchTerm, sortBy, sortOrder, role, status } = req.query
-    const result = await UserService.getAllFromDB(filters, options)
     sendResponse(res, {
-        statusCode: 200,
+        statusCode: 201,
         success: true,
-        message: "User Retrieved Successfully",
-        meta: result.meta,
-        data: result.data
+        message: "Schedule fetched Successfully",
+        data: result
     })
 })
 
-
-
-export const UserController = {
-    getAllFromDB
+export const ScheduleController = {
+    schedulesForDoctor
 }
 ```
+
 - user.service.ts 
 
 ```ts 
-import bcrypt from "bcryptjs";
-import { createPatientInput } from "./user.interface";
+import { addHours, addMinutes, format } from "date-fns";
 import { prisma } from "../../shared/prisma";
-import { Request } from "express";
-import { fileUploader } from "../../helper/fileUploader";
-import { Admin, Doctor, Prisma, UserRole } from "@prisma/client";
 import { IOptions, paginationHelper } from "../../helper/paginationHelper";
-import { userSearchableFields } from "./user.constant";
+import { Prisma } from "@prisma/client";
 
 
-
-const getAllFromDB = async (params: any, options: IOptions) => {
+const schedulesForDoctor = async (filters: any, options: IOptions) => {
     const { page, limit, skip, sortBy, sortOrder } = paginationHelper.calculatePagination(options)
-    const { searchTerm, ...filterData } = params;
+    const { startDateTime: filterStartDateTime, endDateTime: filterEndDateTime } = filters
 
-    const andConditions: Prisma.UserWhereInput[] = [];
+    const andConditions: Prisma.ScheduleWhereInput[] = [];
 
-    if (searchTerm) {
+    if (filterStartDateTime && filterEndDateTime) {
         andConditions.push({
-            OR: userSearchableFields.map(field => ({
-                [field]: {
-                    contains: searchTerm,
-                    mode: "insensitive"
+            AND: [
+                {
+                    startDateTime: {
+                        gte: filterStartDateTime
+                    }
+                },
+                {
+                    endDateTime: {
+                        lte: filterEndDateTime
+                    }
                 }
-            }))
+            ]
         })
     }
 
-    if (Object.keys(filterData).length > 0) {
-        andConditions.push({
-            AND: Object.keys(filterData).map(key => ({
-                [key]: {
-                    equals: (filterData as any)[key]
-                }
-            }))
-        })
-    }
-
-    const whereConditions: Prisma.UserWhereInput = andConditions.length > 0 ? {
+    const whereConditions: Prisma.ScheduleWhereInput = andConditions.length > 0 ? {
         AND: andConditions
     } : {}
 
-    const result = await prisma.user.findMany({
+    const result = await prisma.schedule.findMany({
+        where: whereConditions,
         skip,
         take: limit,
-
-        where: whereConditions,
         orderBy: {
             [sortBy]: sortOrder
         }
-    });
+    })
 
-    const total = await prisma.user.count({
+    const total = await prisma.schedule.count({
         where: whereConditions
     });
+
     return {
         meta: {
             page,
@@ -663,11 +396,277 @@ const getAllFromDB = async (params: any, options: IOptions) => {
         },
         data: result
     };
+
 }
 
 
+// Export this service so it can be imported in other modules, like controllers
+export const ScheduleService = {
+    schedulesForDoctor
+};
 
-export const UserService = {
-    getAllFromDB
+```
+
+## 59-7 Deleting Schedule from the Database
+
+- schedule.routes.ts 
+
+```ts 
+import express from 'express'
+import { ScheduleController } from './schedule.controller'
+
+
+
+const router = express.Router()
+
+router.get("/", ScheduleController.schedulesForDoctor)
+
+router.post("/", ScheduleController.insertIntoDB)
+router.delete("/:id", ScheduleController.deleteScheduleFromDB)
+
+export const ScheduleRoutes = router
+```
+- schedule.controller.ts 
+
+```ts 
+import { Request, Response } from "express";
+import catchAsync from "../../shared/catchAsync";
+import sendResponse from "../../shared/sendResponse";
+import { ScheduleService } from "./schedule.service";
+import pick from "../../helper/pick";
+
+
+
+
+const insertIntoDB = catchAsync(async (req: Request, res: Response) => {
+
+    const result = await ScheduleService.insertIntoDB(req.body)
+
+    sendResponse(res, {
+        statusCode: 201,
+        success: true,
+        message: "Schedule Created Successfully",
+        data: result
+    })
+})
+const schedulesForDoctor = catchAsync(async (req: Request, res: Response) => {
+    const options = pick(req.query, ["page", "limit", "sortBy", "sortOrder"]) // pagination and sorting
+    const filters = pick(req.query, ["startDateTime", "endDateTime"])
+    const result = await ScheduleService.schedulesForDoctor(filters, options)
+
+    sendResponse(res, {
+        statusCode: 201,
+        success: true,
+        message: "Schedule fetched Successfully",
+        meta: result.meta,
+        data: result.data
+    })
+})
+const deleteScheduleFromDB = catchAsync(async (req: Request, res: Response) => {
+
+    const result = await ScheduleService.deleteScheduleFromDB(req.params.id)
+
+    console.log(result)
+
+    sendResponse(res, {
+        statusCode: 200,
+        success: true,
+        message: "Schedule deleted Successfully",
+        data: result
+    })
+})
+
+export const ScheduleController = {
+    insertIntoDB,
+    schedulesForDoctor,
+    deleteScheduleFromDB
 }
+```
+- schedule.service.ts 
+
+```ts 
+import { addHours, addMinutes, format } from "date-fns";
+import { prisma } from "../../shared/prisma";
+import { IOptions, paginationHelper } from "../../helper/paginationHelper";
+import { Prisma } from "@prisma/client";
+
+// ========================
+// 🧩 PURPOSE OF FUNCTION
+// ========================
+// This function takes a date range (startDate → endDate)
+// and a time range (startTime → endTime),
+// then automatically generates 30-minute time slots
+// for each day in that range.
+//
+// Each time slot is stored in the database (if it doesn’t already exist)
+// using Prisma ORM. 
+//
+// Example:
+// Input → startDate: "2025-10-14", endDate: "2025-10-15", startTime: "09:00", endTime: "12:00"
+// Output → Creates time slots like:
+//  2025-10-14 09:00 - 09:30
+//  2025-10-14 09:30 - 10:00
+//  ...
+//  2025-10-15 11:30 - 12:00
+// ========================
+
+const insertIntoDB = async (payload: any) => {
+
+    // Destructure user-provided values from request body or input payload
+    const { startTime, endTime, startDate, endDate } = payload;
+
+    const intervalTime = 30; // each appointment slot will be 30 minutes long
+    const schedules: any[] = []; // this will store all newly created schedule entries
+
+    // Convert plain date strings (like "2025-10-14") into JavaScript Date objects
+    const currentDate = new Date(startDate); // will start from this day
+    const lastDate = new Date(endDate);      // will stop at this day
+
+    // ===============================
+    // 🔁 OUTER LOOP (for each date)
+    // ===============================
+    // This loop will run for each day between startDate → endDate.
+    // Example: if startDate=Oct 14 and endDate=Oct 16,
+    // this loop runs 3 times → Oct 14, 15, 16
+    while (currentDate <= lastDate) {
+
+        // Build a DateTime object for when the workday starts (e.g., "09:00" on this date)
+        const startDateTime = new Date(
+            addMinutes(
+                addHours(
+                    // format(currentDate, "yyyy-MM-dd") converts the Date object to a string like "2025-10-14"
+                    // ❗️But note: passing a string to addHours is logically wrong (addHours expects a Date)
+                    `${format(currentDate, "yyyy-MM-dd")}`,
+                    Number(startTime.split(":")[0]) // Extract the "hour" part from "09:00" → 9
+                ),
+                Number(startTime.split(":")[1])     // Extract the "minute" part from "09:00" → 0
+            )
+        );
+
+        // Build a DateTime object for when the workday ends (e.g., "17:00" on this date)
+        const endDateTime = new Date(
+            addMinutes(
+                addHours(
+                    `${format(currentDate, "yyyy-MM-dd")}`,
+                    Number(endTime.split(":")[0])   // Extract hour part from endTime → e.g. 17
+                ),
+                Number(endTime.split(":")[1])       // Extract minute part → e.g. 0
+            )
+        );
+
+        // ===========================================
+        // 🔁 INNER LOOP (for each time slot of the day)
+        // ===========================================
+        // Example: if startTime=09:00 and endTime=12:00,
+        // this loop will create slots like:
+        // 09:00–09:30, 09:30–10:00, 10:00–10:30, ...
+        while (startDateTime < endDateTime) {
+
+            // Define start and end of the current 30-minute slot
+            const slotStartDateTime = startDateTime;                 // current start time
+            const slotEndDateTime = addMinutes(startDateTime, intervalTime); // add 30 minutes for the end time
+
+            // Build an object representing this slot (this is what will be saved in DB)
+            const scheduleData = {
+                startDateTime: slotStartDateTime,
+                endDateTime: slotEndDateTime
+            };
+
+            // 🔍 Step 1: Check if a schedule with exactly the same times already exists in DB
+            // We don’t want duplicate schedule slots in the table.
+            const existingSchedule = await prisma.schedule.findFirst({
+                where: scheduleData
+            });
+
+            // ✅ Step 2: If it doesn’t exist, insert it into the database
+            if (!existingSchedule) {
+                const result = await prisma.schedule.create({
+                    data: scheduleData
+                });
+                schedules.push(result); // add the created record to our local array
+            }
+
+            // ⏩ Step 3: Move the start time 30 minutes forward for the next slot
+            // Example: if current slot was 09:00–09:30, next will be 09:30–10:00
+            slotStartDateTime.setMinutes(slotStartDateTime.getMinutes() + intervalTime);
+        }
+
+        // 📅 Step 4: Once we’re done with one full day, move to the next date
+        // This increases "currentDate" by 1 day.
+        // Example: from 2025-10-14 → 2025-10-15
+        currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    // 🧾 Return all newly created schedules so the caller can see what was generated
+    return schedules;
+};
+
+const schedulesForDoctor = async (filters: any, options: IOptions) => {
+    const { page, limit, skip, sortBy, sortOrder } = paginationHelper.calculatePagination(options)
+    const { startDateTime: filterStartDateTime, endDateTime: filterEndDateTime } = filters
+
+    const andConditions: Prisma.ScheduleWhereInput[] = [];
+
+    if (filterStartDateTime && filterEndDateTime) {
+        andConditions.push({
+            AND: [
+                {
+                    startDateTime: {
+                        gte: filterStartDateTime
+                    }
+                },
+                {
+                    endDateTime: {
+                        lte: filterEndDateTime
+                    }
+                }
+            ]
+        })
+    }
+
+    const whereConditions: Prisma.ScheduleWhereInput = andConditions.length > 0 ? {
+        AND: andConditions
+    } : {}
+
+    const result = await prisma.schedule.findMany({
+        where: whereConditions,
+        skip,
+        take: limit,
+        orderBy: {
+            [sortBy]: sortOrder
+        }
+    })
+
+    const total = await prisma.schedule.count({
+        where: whereConditions
+    });
+
+    return {
+        meta: {
+            page,
+            limit,
+            total
+        },
+        data: result
+    };
+
+}
+
+const deleteScheduleFromDB = async (id: string) => {
+    console.log(id)
+    return await prisma.schedule.delete({
+        where: {
+            id
+        }
+    })
+}
+
+
+// Export this service so it can be imported in other modules, like controllers
+export const ScheduleService = {
+    insertIntoDB,
+    schedulesForDoctor,
+    deleteScheduleFromDB
+};
+
 ```
