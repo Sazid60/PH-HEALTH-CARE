@@ -19,19 +19,34 @@ const insertIntoDB = catchAsync(async (req: Request, res: Response) => {
     })
 })
 const schedulesForDoctor = catchAsync(async (req: Request, res: Response) => {
-        const options = pick(req.query, ["page", "limit", "sortBy", "sortOrder"]) // pagination and sorting
-        const filters = pick(req.query,["startDateTime", "endDateTime"])
+    const options = pick(req.query, ["page", "limit", "sortBy", "sortOrder"]) // pagination and sorting
+    const filters = pick(req.query, ["startDateTime", "endDateTime"])
     const result = await ScheduleService.schedulesForDoctor(filters, options)
 
     sendResponse(res, {
         statusCode: 201,
         success: true,
         message: "Schedule fetched Successfully",
+        meta: result.meta,
+        data: result.data
+    })
+})
+const deleteScheduleFromDB = catchAsync(async (req: Request, res: Response) => {
+
+    const result = await ScheduleService.deleteScheduleFromDB(req.params.id)
+
+    console.log(result)
+
+    sendResponse(res, {
+        statusCode: 200,
+        success: true,
+        message: "Schedule deleted Successfully",
         data: result
     })
 })
 
 export const ScheduleController = {
     insertIntoDB,
-    schedulesForDoctor
+    schedulesForDoctor,
+    deleteScheduleFromDB
 }

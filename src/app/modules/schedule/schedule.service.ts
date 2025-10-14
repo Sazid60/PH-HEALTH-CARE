@@ -165,9 +165,19 @@ const schedulesForDoctor = async (filters: any, options: IOptions) => {
 
 }
 
+const deleteScheduleFromDB = async (id: string) => {
+    console.log(id)
+    return await prisma.schedule.delete({
+        where: {
+            id
+        }
+    })
+}
+
 
 // Export this service so it can be imported in other modules, like controllers
 export const ScheduleService = {
     insertIntoDB,
-    schedulesForDoctor
+    schedulesForDoctor,
+    deleteScheduleFromDB
 };
