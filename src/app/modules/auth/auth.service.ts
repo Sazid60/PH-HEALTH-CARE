@@ -3,6 +3,8 @@ import { prisma } from "../../shared/prisma"
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken'
 import { jwtHelper } from "../../helper/jwtHelper";
+import ApiError from "../../errors/ApiError";
+import httpStatus from 'http-status';
 
 const login = async (payload: { email: string, password: string }) => {
     console.log(payload)
@@ -17,20 +19,20 @@ const login = async (payload: { email: string, password: string }) => {
 
     const isCorrectPassword = await bcrypt.compare(payload.password, user.password)
 
-    if(!isCorrectPassword){
-        throw new Error("Password Incorrect")
+    if (!isCorrectPassword) {
+        throw new ApiError(httpStatus.BAD_REQUEST, "Password Incorrect")
     }
     //  generate access token 
-    const accessToken = jwtHelper.generateToken({email: user.email, role: user.role}, "abcd","1h")
+    const accessToken = jwtHelper.generateToken({ email: user.email, role: user.role }, "abcd", "1h")
 
     // generate refresh token 
-        const refreshToken = jwtHelper.generateToken({email: user.email, role: user.role}, "abcd","90d")
+    const refreshToken = jwtHelper.generateToken({ email: user.email, role: user.role }, "abcd", "90d")
 
 
     return {
         accessToken,
         refreshToken,
-        needPasswordChange : user.needPasswordChange
+        needPasswordChange: user.needPasswordChange
     }
 }
 
