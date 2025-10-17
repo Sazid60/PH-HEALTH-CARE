@@ -626,3 +626,16 @@ export const DoctorService = {
 }
 
 ```
+
+```json 
+{
+
+    "name" : "Dr.Sazid",
+    "specialties" :[
+        {
+            "specialtyId" : "dd521768-f2cd-48e8-9454-a5a1a8cfbacc",
+            "isDeleted" : true
+        }
+    ]
+}
+```
