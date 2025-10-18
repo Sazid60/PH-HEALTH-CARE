@@ -210,7 +210,7 @@ export const DoctorService = {
 
 ```
 
-## 61-3 Implementing AI-Driven Doctor Suggestion – Part 2, 61-3 Implementing AI-Driven Doctor Suggestion – Part 2
+## 61-3 Implementing AI-Driven Doctor Suggestion – Part 2, 61-3 Implementing AI-Driven Doctor Suggestion – Part 2, 61-4 Implementing AI-Driven Doctor Suggestion – Part 3
 
 - helper -> extractJsonFromMessage.ts
 
@@ -322,6 +322,13 @@ Return your response in JSON format with full individual doctor data.
 
 export const DoctorService = {
     getAISuggestions
+}
+
+```
+
+```json
+{
+ "symptoms" : ":chestpain, shortness of breath, and irregular heartbeat"
 }
 
 ```
