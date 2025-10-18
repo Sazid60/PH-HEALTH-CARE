@@ -1,544 +1,167 @@
-# ERROR-HANDLING-VALIDATION-AND-DOCTOR-SPECIALTY-MANAGEMENT
+# AI-DOCTOR-SUGGESTIONS-APPOINTMENT-AND-PAYMENT-SYSTEM
 
-Github Link : https://github.com/Apollo-Level2-Web-Dev/ph-health-care-server/tree/part-5
 
-## 60-1 Prisma Error Handling – Part 1
+GitHub Link: https://github.com/Apollo-Level2-Web-Dev/ph-health-care-server/tree/part-6
 
-- middlewares -> globalErrorHandlers.ts
 
-```ts
-import { Prisma } from "@prisma/client";
-import { NextFunction, Request, Response } from "express";
-import httpStatus from "http-status";
-
-const globalErrorHandler = (
-  err: any,
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  let statusCode = httpStatus.INTERNAL_SERVER_ERROR;
-  let success = false;
-  let message = err.message || "Something went wrong!";
-  let error = err;
-
-  if (error instanceof Prisma.PrismaClientKnownRequestError) {
-    if (error.code == "P2002") {
-      (message = "Duplicate key error"), (error = error.meta);
-    }
-    if (error.code == "P1000") {
-      (message = "Authentication failed against database server!"),
-        (error = error.meta);
-    }
-    if (error.code == "P2003") {
-      (message = "Foreign key constraint failed on the field!"),
-        (error = error.meta);
-    }
-    if (error.code == "P2007") {
-      (message = "Data validation error!"), (error = error.meta);
-    }
-  }
-
-  res.status(statusCode).json({
-    success,
-    message,
-    error,
-  });
-};
-
-export default globalErrorHandler;
-```
-
-## 60-2 Prisma Error Handling – Part 2
-
-- middlewares -> globalErrorHandlers.ts
-
-```ts
-import { Prisma } from "@prisma/client";
-import { NextFunction, Request, Response } from "express";
-import httpStatus from "http-status";
-
-const globalErrorHandler = (
-  err: any,
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  let statusCode: number = httpStatus.INTERNAL_SERVER_ERROR;
-  let success = false;
-  let message = err.message || "Something went wrong!";
-  let error = err;
-
-  if (error instanceof Prisma.PrismaClientKnownRequestError) {
-    if (error.code == "P2002") {
-      (message = "Duplicate key error"),
-        (error = error.meta),
-        (statusCode = httpStatus.CONFLICT);
-    }
-    if (error.code == "P1000") {
-      (message = "Authentication failed against database server!"),
-        (error = error.meta),
-        (statusCode = httpStatus.BAD_GATEWAY);
-    }
-    if (error.code == "P2003") {
-      (message = "Foreign key constraint failed on the field!"),
-        (error = error.meta),
-        (statusCode = httpStatus.BAD_REQUEST);
-    }
-  } else if (error instanceof Prisma.PrismaClientValidationError) {
-    message = "Validation Error";
-    (error = error.message), (statusCode = httpStatus.BAD_REQUEST);
-  } else if (error instanceof Prisma.PrismaClientUnknownRequestError) {
-    message = "Something Unknown Error Happened!";
-    error = error.message;
-    statusCode = httpStatus.BAD_REQUEST;
-  } else if (error instanceof Prisma.PrismaClientInitializationError) {
-    message = "Prisma Client Failed To Initialize!";
-    error = error.message;
-    statusCode = httpStatus.BAD_REQUEST;
-  }
-
-  res.status(statusCode).json({
-    success,
-    message,
-    error,
-  });
-};
-
-export default globalErrorHandler;
-```
-
-## 60-3 Implementing ApiError Handling
-
-- middlewares -> globalErrorHandlers.ts
-
-```ts
-class ApiError extends Error {
-  statusCode: number;
-  constructor(statusCode: number, message: string | undefined, stack = "") {
-    super(message);
-    this.statusCode = statusCode;
-    if (stack) {
-      this.stack = stack;
-    } else {
-      Error.captureStackTrace(this, this.constructor);
-    }
-  }
-}
-
-export default ApiError;
-```
-
-- app -> errors -> ApiError.ts
-
-```ts
-class ApiError extends Error {
-  statusCode: number;
-  constructor(statusCode: number, message: string | undefined, stack = "") {
-    super(message);
-    this.statusCode = statusCode;
-    if (stack) {
-      this.stack = stack;
-    } else {
-      Error.captureStackTrace(this, this.constructor);
-    }
-  }
-}
-
-export default ApiError;
-```
-
-```ts
-if (!isCorrectPassword) {
-  throw new ApiError(httpStatus.BAD_REQUEST, "Password Incorrect");
-}
-```
-
-## 60-4 Applying Zod Validations
-
-- doctorschedule.routes.ts
-
-```ts
-import express from "express";
-import { DoctorScheduleController } from "./doctorSchedule.controller";
-import { UserRole } from "@prisma/client";
-import auth from "../../middlewares/auth";
-import validateRequest from "../../middlewares/validateRequest";
-import { DoctorScheduleValidation } from "./doctorSchedule.validation";
-const router = express.Router();
-
-router.post(
-  "/",
-  auth(UserRole.DOCTOR),
-  validateRequest(
-    DoctorScheduleValidation.createDoctorScheduleValidationSchema
-  ),
-  DoctorScheduleController.insertIntoDB
-);
-
-export const doctorScheduleRoutes = router;
-```
-
-- doctorSchedule.validation.ts
-
-```ts
-import z from "zod";
-
-const createDoctorScheduleValidationSchema = z.object({
-  body: z.object({
-    scheduleIds: z.array(z.string()),
-  }),
-});
-
-export const DoctorScheduleValidation = {
-  createDoctorScheduleValidationSchema,
-};
-```
-
-## 60-5 Overview & Implementation of Specialty and Doctor Specialty
+## 61-1 Setting Up OpenRouter for AI Agent (OpenAI SDK Integration)
+- How will ai agent will work ?
 
 ![alt text](image.png)
 
-- prisma/schema/specialty.prisma
+- we will use `open router` ai which is a part of open ai
+- create a key, grab the key and set in .env 
 
-```ts
-model Specialties {
-    id                String              @id @default(uuid())
-    title             String
-    icon              String
-    doctorSpecialties DoctorSpecialties[]
+- config -> index.ts 
 
-    @@map("specialties")
-}
+```ts 
+import dotenv from 'dotenv';
+import path from 'path';
 
-model DoctorSpecialties {
-    specialitiesId String
-    specialities   Specialties @relation(fields: [specialitiesId], references: [id])
+dotenv.config({ path: path.join(process.cwd(), '.env') });
 
-    doctorId String
-    doctor   Doctor @relation(fields: [doctorId], references: [id])
-
-    @@id([specialitiesId, doctorId])
-    @@map("doctor_specialties")
-}
-```
-
-- src/app/modules/specialties/specialties.controller.ts
-
-```ts
-import { Request, Response } from "express";
-import httpStatus from "http-status";
-import { SpecialtiesService } from "./specialties.service";
-import catchAsync from "../../shared/catchAsync";
-import sendResponse from "../../shared/sendResponse";
-
-const inserIntoDB = catchAsync(async (req: Request, res: Response) => {
-  const result = await SpecialtiesService.inserIntoDB(req);
-
-  sendResponse(res, {
-    statusCode: httpStatus.OK,
-    success: true,
-    message: "Specialties created successfully!",
-    data: result,
-  });
-});
-
-const getAllFromDB = catchAsync(async (req: Request, res: Response) => {
-  const result = await SpecialtiesService.getAllFromDB();
-  sendResponse(res, {
-    statusCode: httpStatus.OK,
-    success: true,
-    message: "Specialties data fetched successfully",
-    data: result,
-  });
-});
-
-const deleteFromDB = catchAsync(async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const result = await SpecialtiesService.deleteFromDB(id);
-  sendResponse(res, {
-    statusCode: httpStatus.OK,
-    success: true,
-    message: "Specialty deleted successfully",
-    data: result,
-  });
-});
-
-export const SpecialtiesController = {
-  inserIntoDB,
-  getAllFromDB,
-  deleteFromDB,
-};
-```
-
-- src/app/modules/specialties/specialties.routes.ts
-
-```ts
-import express, { NextFunction, Request, Response } from "express";
-import { SpecialtiesController } from "./specialties.controller";
-import { SpecialtiesValidtaion } from "./specialties.validation";
-import auth from "../../middlewares/auth";
-import { UserRole } from "@prisma/client";
-import { fileUploader } from "../../helper/fileUploader";
-
-const router = express.Router();
-
-// Task 1: Retrieve Specialties Data
-
-/**
-- Develop an API endpoint to retrieve all specialties data.
-- Implement an HTTP GET endpoint returning specialties in JSON format.
-- ENDPOINT: /specialties
-*/
-router.get("/", SpecialtiesController.getAllFromDB);
-
-router.post(
-  "/",
-  fileUploader.upload.single("file"),
-  (req: Request, res: Response, next: NextFunction) => {
-    req.body = SpecialtiesValidtaion.create.parse(JSON.parse(req.body.data));
-    return SpecialtiesController.inserIntoDB(req, res, next);
-  }
-);
-
-// Task 2: Delete Specialties Data by ID
-
-/**
-- Develop an API endpoint to delete specialties by ID.
-- Implement an HTTP DELETE endpoint accepting the specialty ID.
-- Delete the specialty from the database and return a success message.
-- ENDPOINT: /specialties/:id
-*/
-
-router.delete(
-  "/:id",
-  auth(UserRole.ADMIN, UserRole.ADMIN),
-  SpecialtiesController.deleteFromDB
-);
-
-export const SpecialtiesRoutes = router;
-```
-
-- src/app/modules/specialties/specialties.service.ts
-
-```ts
-import { Request } from "express";
-import { fileUploader } from "../../helper/fileUploader";
-import { prisma } from "../../shared/prisma";
-import { Specialties } from "@prisma/client";
-
-const inserIntoDB = async (req: Request) => {
-  const file = req.file;
-
-  if (file) {
-    const uploadToCloudinary = await fileUploader.uploadToCloudinary(file);
-    req.body.icon = uploadToCloudinary?.secure_url;
-  }
-
-  const result = await prisma.specialties.create({
-    data: req.body,
-  });
-
-  return result;
-};
-
-const getAllFromDB = async (): Promise<Specialties[]> => {
-  return await prisma.specialties.findMany();
-};
-
-const deleteFromDB = async (id: string): Promise<Specialties> => {
-  const result = await prisma.specialties.delete({
-    where: {
-      id,
+export default {
+    node_env: process.env.NODE_ENV,
+    port: process.env.PORT,
+    database_url: process.env.DATABASE_URL,
+    cloudinary: {
+        api_secret: process.env.CLOUDINARY_API_SECRET,
+        cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+        api_key: process.env.CLOUDINARY_API_KEY
     },
-  });
-  return result;
-};
-
-export const SpecialtiesService = {
-  inserIntoDB,
-  getAllFromDB,
-  deleteFromDB,
-};
-```
-
-- src/app/modules/specialties/specialties.validation.ts
-
-```ts
-import { z } from "zod";
-
-const create = z.object({
-  title: z.string({
-    error: "Title is required!",
-  }),
-});
-
-export const SpecialtiesValidtaion = {
-  create,
-};
-```
-
-
-## 60-6 Implementing Doctor Searching Functionality, 60-7 Fixing Errors in Doctor Searching, 60-8 Implementing Doctor Profile Update, 60-9 Creating & Deleting Doctor Specialties, 60-10 Filtering Doctors by Specialty and Task
-
-- doctor.constant.ts 
-
-```ts 
-export const doctorFilterableFields = ["email", "contactNumber", "gender", "appointmentFee", "specialties", "searchTerm"]
-
-export const doctorSearchableFields = ["name", "email", "contactNumber"]
-```
-- doctor.interface.ts 
-
-```ts 
-import { Gender } from "@prisma/client";
-
-export type IDoctorUpdateInput = {
-    email: string;
-    contactNumber: string;
-    gender: Gender;
-    appointmentFee: number;
-    name: string;
-    address: string;
-    registrationNumber: string;
-    experience: number;
-    qualification: string;
-    currentWorkingPlace: string;
-    designation: string;
-    isDeleted: boolean;
-    specialties: {
-        specialtyId: string;
-        isDeleted?: boolean;
-    }[]
+    openRouterApiKey : process.env.OPENROUTER_API_KEY
 }
 ```
-- doctor.routes.ts 
+
+- lets install the open ai
+
+```
+npm i openai
+```
+
+## 61-2 Implementing AI-Driven Doctor Suggestion – Part 1
+- helper -> open-router.ts 
 
 ```ts 
+import OpenAI from 'openai';
+import config from '../../config';
+
+export const openai = new OpenAI({
+  baseURL: 'https://openrouter.ai/api/v1',
+  apiKey: config.openRouterApiKey,
+});
+
+```
+- helpers -> open-router.ts 
+
+```ts
+import OpenAI from 'openai';
+import config from '../../config';
+
+const openai = new OpenAI({
+  baseURL: 'https://openrouter.ai/api/v1',
+  apiKey: config.openRouterApiKey,
+  defaultHeaders: {
+    'HTTP-Referer': '<YOUR_SITE_URL>', // Optional. Site URL for rankings on openrouter.ai.
+    'X-Title': '<YOUR_SITE_NAME>', // Optional. Site title for rankings on openrouter.ai.
+  },
+});
+
+async function main() {
+  const completion = await openai.chat.completions.create({
+    model: 'openai/gpt-4o',
+    messages: [
+      {
+        role: 'user',
+        content: 'What is the meaning of life?',
+      },
+    ],
+  });
+
+  console.log(completion.choices[0].message);
+}
+
+main();
+
+```
+- lets clean iup this according to our requirements 
+
+- helper -> open-router.ts 
+
+```ts 
+import OpenAI from 'openai';
+import config from '../../config';
+
+export const openai = new OpenAI({
+  baseURL: 'https://openrouter.ai/api/v1',
+  apiKey: config.openRouterApiKey,
+});
+```
+- doctor -> doctor.routes.ts 
+
+```ts
 import express from "express";
 import { DoctorController } from "./doctor.controller";
 
 const router = express.Router();
 
-router.get(
-    "/",
-    DoctorController.getAllFromDB
-)
+router.post("/suggestion", DoctorController.getAiSuggestions)
 
-router.patch(
-    "/:id",
-    DoctorController.updateIntoDB
-)
+
 export const DoctorRoutes = router;
 ```
-- doctor.controller.ts 
+- doctor -> doctor.controller.ts 
 
-```ts 
+```ts
 import { Request, Response } from "express";
 import catchAsync from "../../shared/catchAsync";
-import { IJWTPayload } from "../../types/common";
-import pick from "../../helper/pick";
 import { DoctorService } from "./doctor.service";
 import sendResponse from "../../shared/sendResponse";
-import { doctorFilterableFields } from "./doctor.constant";
 
-const getAllFromDB = catchAsync(async (req: Request, res: Response) => {
-    const options = pick(req.query, ["page", "limit", "sortBy", "sortOrder"]);
-    const fillters = pick(req.query, doctorFilterableFields)
 
-    const result = await DoctorService.getAllFromDB(fillters, options);
+const getAiSuggestions = catchAsync(async (req: Request, res: Response) => {
+
+    const result = await DoctorService.getAISuggestions(req.body);
 
     sendResponse(res, {
         statusCode: 200,
         success: true,
-        message: "Doctor fetched successfully!",
-        meta: result.meta,
-        data: result.data
-    })
-})
-
-const updateIntoDB = catchAsync(async (req: Request, res: Response) => {
-
-    const { id } = req.params;
-
-    const result = await DoctorService.updateIntoDB(id, req.body);
-
-    sendResponse(res, {
-        statusCode: 200,
-        success: true,
-        message: "Doctor updated successfully!",
+        message: "AI Suggestions Fetched successfully!",
         data: result
     })
 })
 
 
+ 
+
 export const DoctorController = {
-    getAllFromDB,
-    updateIntoDB
+
+    getAiSuggestions
 }
 ```
-- doctor.service.ts 
+- doctor -> doctor.service.ts 
 
-```ts 
+```ts
 import { Doctor, Prisma } from "@prisma/client";
-import { IOptions, paginationHelper } from "../../helper/paginationHelper";
 
 import { prisma } from "../../shared/prisma";
-import { doctorSearchableFields } from "./doctor.constant";
-import { IDoctorUpdateInput } from "./doctor.interface";
+
+import { openai } from "../../helper/open-router";
 
 
-const getAllFromDB = async (filters: any, options: IOptions) => {
-    const { page, limit, skip, sortBy, sortOrder } = paginationHelper.calculatePagination(options);
-    const { searchTerm, specialties, ...filterData } = filters;
 
-    const andConditions: Prisma.DoctorWhereInput[] = [];
+const getAISuggestions = async (payload: { symptoms: string }) => {
+    // implement ai suggestion system 
 
-    if (searchTerm) {
-        andConditions.push({
-            OR: doctorSearchableFields.map((field) => ({
-                [field]: {
-                    contains: searchTerm,
-                    mode: "insensitive"
-                }
-            }))
-        })
+    console.log(payload)
+
+    if (!(payload && payload.symptoms)) {
+        throw new ApiError(httpStatus.BAD_REQUEST, "Symptom is Required!")
     }
 
-    // "", "medicine"
-    if (specialties && specialties.length > 0) {
-        andConditions.push({
-            doctorSpecialties: {
-                some: {
-                    specialities: {
-                        title: {
-                            contains: specialties,
-                            mode: "insensitive"
-                        }
-                    }
-                }
-            }
-        })
-    }
-
-    if (Object.keys(filterData).length > 0) {
-        const filterConditions = Object.keys(filterData).map((key) => ({
-            [key]: {
-                equals: (filterData as any)[key]
-            }
-        }))
-
-        andConditions.push(...filterConditions)
-    }
-
-    const whereConditions: Prisma.DoctorWhereInput = andConditions.length > 0 ? { AND: andConditions } : {};
-
-    const result = await prisma.doctor.findMany({
-        where: whereConditions,
-        skip,
-        take: limit,
-        orderBy: {
-            [sortBy]: sortOrder
+    const doctors = await prisma.doctor.findMany({
+        where: {
+            isDeleted: false
         },
         include: {
             doctorSpecialties: {
@@ -547,95 +170,366 @@ const getAllFromDB = async (filters: any, options: IOptions) => {
                 }
             }
         }
-    });
-
-    const total = await prisma.doctor.count({
-        where: whereConditions
     })
 
-    return {
-        meta: {
-            total,
-            page,
-            limit
-        },
-        data: result
-    }
-}
+    const prompt = `
+You are a medical assistant AI. Based on the patient's symptoms, suggest the top 3 most suitable doctors.
+Each doctor has specialties and years of experience.
+Only suggest doctors who are relevant to the given symptoms.
 
-const updateIntoDB = async (id: string, payload: Partial<IDoctorUpdateInput>) => {
-    const doctorInfo = await prisma.doctor.findUniqueOrThrow({
-        where: {
-            id
-        }
-    });
+Symptoms: ${payload.symptoms}
 
-    const { specialties, ...doctorData } = payload;
+Here is the doctor list (in JSON):
+${JSON.stringify(doctors, null, 2)}
 
-    return await prisma.$transaction(async (tnx) => {
-        if (specialties && specialties.length > 0) {
-            const deleteSpecialtyIds = specialties.filter((specialty) => specialty.isDeleted);
+Return your response in JSON format with full individual doctor data. 
+`;
 
-            for (const specialty of deleteSpecialtyIds) {
-                await tnx.doctorSpecialties.deleteMany({
-                    where: {
-                        doctorId: id,
-                        specialitiesId: specialty.specialtyId
-                    }
-                })
-            }
-
-            const createSpecialtyIds = specialties.filter((specialty) => !specialty.isDeleted);
-
-            for (const specialty of createSpecialtyIds) {
-                await tnx.doctorSpecialties.create({
-                    data: {
-                        doctorId: id,
-                        specialitiesId: specialty.specialtyId
-                    }
-                })
-            }
-
-        }
-
-        const updatedData = await tnx.doctor.update({
-            where: {
-                id: doctorInfo.id
-            },
-            data: doctorData,
-            include: {
-                doctorSpecialties: {
-                    include: {
-                        specialities: true
-                    }
-                }
-            }
-
-            //  doctor - doctorSpecailties - specialities 
-        })
-
-        return updatedData
-    })
+const completion = await openai.chat.completions.create({
+    model: 'z-ai/glm-4.5-air:free',
+    messages: [
+      {
+        role: 'system',
+        content:  "You are a helpful AI medical assistant that provides doctor suggestions.",
+      },
+      {
+        role: 'user',
+        content: prompt,
+      },
+    ],
+  });
 
 
+    console.log(doctors)
 }
 
 export const DoctorService = {
-    getAllFromDB,
-    updateIntoDB
+
+    getAISuggestions
 }
 
 ```
 
-```json 
-{
+## 61-3 Implementing AI-Driven Doctor Suggestion – Part 2, 61-3 Implementing AI-Driven Doctor Suggestion – Part 2, 61-4 Implementing AI-Driven Doctor Suggestion – Part 3
 
-    "name" : "Dr.Sazid",
-    "specialties" :[
-        {
-            "specialtyId" : "dd521768-f2cd-48e8-9454-a5a1a8cfbacc",
-            "isDeleted" : true
+- helper -> extractJsonFromMessage.ts
+
+```ts 
+export const extractJsonFromMessage = (message: any) => {
+    try {
+        const content = message?.content || "";
+
+        // 1. Try to extract JSON code block (```json ... ```)
+        const jsonBlockMatch = content.match(/```json([\s\S]*?)```/);
+        if (jsonBlockMatch) {
+            const jsonText = jsonBlockMatch[1].trim();
+            return JSON.parse(jsonText);
         }
-    ]
+
+        // 2. If no code block, try to directly parse JSON if response is plain JSON
+        if (content.trim().startsWith("[") || content.trim().startsWith("{")) {
+            return JSON.parse(content);
+        }
+
+        // 3. Try to find the first JSON-like substring (fallback)
+        const jsonFallbackMatch = content.match(/(\[[\s\S]*\]|\{[\s\S]*\})/);
+        if (jsonFallbackMatch) {
+            return JSON.parse(jsonFallbackMatch[1]);
+        }
+
+        // 4. If still no valid JSON found
+        return [];
+    } catch (error) {
+        console.error("Error parsing AI response:", error);
+        return [];
+    }
+};
+```
+- doctor.service.ts 
+
+
+```ts 
+import { Doctor, Prisma } from "@prisma/client";
+import { prisma } from "../../shared/prisma";
+import ApiError from "../../errors/ApiError";
+import httpStatus from 'http-status';
+import { openai } from "../../helper/open-router";
+import { extractJsonFromMessage } from "../../helper/extractJsonFromMessage";
+
+
+const getAISuggestions = async (payload: { symptoms: string }) => {
+    // implement ai suggestion system 
+
+    console.log(payload)
+
+    if (!(payload && payload.symptoms)) {
+        throw new ApiError(httpStatus.BAD_REQUEST, "Symptom is Required!")
+    }
+
+    const doctors = await prisma.doctor.findMany({
+        where: {
+            isDeleted: false
+        },
+        include: {
+            doctorSpecialties: {
+                include: {
+                    specialities: true
+                }
+            }
+        }
+    })
+
+    console.log("doctors data loaded......\n")
+
+    const prompt = `
+You are a medical assistant AI. Based on the patient's symptoms, suggest the top 3 most suitable doctors.
+Each doctor has specialties and years of experience.
+Only suggest doctors who are relevant to the given symptoms.
+
+Symptoms: ${payload.symptoms}
+
+Here is the doctor list (in JSON):
+${JSON.stringify(doctors, null, 2)}
+
+Return your response in JSON format with full individual doctor data. 
+`;
+
+
+    console.log("analyzing...\n")
+
+    const completion = await openai.chat.completions.create({
+        model: 'z-ai/glm-4.5-air:free',
+        messages: [
+            {
+                role: 'system',
+                content: "You are a helpful AI medical assistant that provides doctor suggestions.",
+            },
+            {
+                role: 'user',
+                content: prompt,
+            },
+        ],
+    });
+
+
+    console.log(doctors)
+
+    console.log(completion.choices[0].message)
+
+    const result = await extractJsonFromMessage(completion.choices[0].message)
+    return result;
+}
+
+export const DoctorService = {
+    getAISuggestions
+}
+
+```
+
+```json
+{
+ "symptoms" : ":chestpain, shortness of breath, and irregular heartbeat"
+}
+
+```
+
+## 61-5 Creating Appointment, Payment, and Prescription Schemas, 61-6 Defining Relationships & Migrating Appointment, Payment, and Prescription to Database
+
+![alt text](image-1.png)
+
+- appointment.prisma
+
+```prisma 
+model Appointment {
+    id             String            @id @default(uuid())
+    patientId      String
+    patient        Patient           @relation(fields: [patientId], references: [id])
+    doctorId       String
+    doctor         Doctor            @relation(fields: [doctorId], references: [id])
+    scheduleId     String
+    schedule       Schedule          @relation(fields: [scheduleId], references: [id])
+    videoCallingId String
+    status         AppointmentStatus @default(SCHEDULED)
+    paymentStatus  PaymentStatus     @default(UNPAID)
+    createAt       DateTime          @default(now())
+    updateAt       DateTime          @updatedAt
+    payment        Payment?
+    prescription   Prescription?
+
+    @@map("appointments")
+}
+
+model Payment {
+    id                 String        @id @default(uuid())
+    appointmentId      String        @unique
+    appointment        Appointment   @relation(fields: [appointmentId], references: [id])
+    amount             Float
+    transactionId      String        @unique
+    status             PaymentStatus @default(UNPAID)
+    paymentGatewayData Json?
+    createAt           DateTime      @default(now())
+    updateAt           DateTime      @updatedAt
+    @@map("payments")
+}
+
+model Prescription {
+    id            String      @id @default(uuid())
+    appointmentId String      @unique
+    appointment   Appointment @relation(fields: [appointmentId], references: [id])
+    doctorId      String
+    doctor        Doctor      @relation(fields: [doctorId], references: [id])
+    patientId     String
+    patient       Patient     @relation(fields: [patientId], references: [id])
+    instructions  String
+    followUpDate  DateTime?
+    createAt      DateTime    @default(now())
+    updateAt      DateTime    @updatedAt
+
+    @@map("prescriptions")
+}
+
+```
+
+- enum.prisma
+
+```prisma 
+enum UserRole {
+  PATIENT
+  DOCTOR
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  DELETED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+
+enum AppointmentStatus {
+    SCHEDULED
+    INPROGRESS
+    COMPLETED
+    CANCEL
+}
+
+enum PaymentStatus {
+    PAID
+    UNPAID
 }
 ```
+
+- schedule.prisma 
+
+```prisma
+model Schedule {
+    id              String            @id @default(uuid())
+    startDateTime   DateTime
+    endDateTime     DateTime
+    createdAt       DateTime          @default(now())
+    updatedAt       DateTime          @updatedAt
+    doctorSchedules DoctorSchedules[]
+    appointments    Appointment[]
+
+    @@map("schedules")
+}
+
+model DoctorSchedules {
+    doctorId   String
+    doctor     Doctor   @relation(fields: [doctorId], references: [id])
+    scheduleId String
+    schedule   Schedule @relation(fields: [scheduleId], references: [id])
+    isBooked   Boolean  @default(false)
+    createdAt  DateTime @default(now())
+    updatedAt  DateTime @updatedAt
+
+    @@id([doctorId, scheduleId]) // composite primary key 
+    // we have made primary key because these two needs to be different and because a doctor will not be able to see multiple patient at a time 
+    @@map("doctor_schedules")
+}
+```
+
+- user.prisma
+
+```prisma
+model User {
+  id                 String     @id @default(uuid())
+  email              String     @unique
+  password           String
+  role               UserRole   @default(PATIENT)
+  needPasswordChange Boolean    @default(true)
+  status             UserStatus @default(ACTIVE)
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+  admin              Admin?
+  doctor             Doctor?
+  patient            Patient?
+
+  @@map("users") // in which name will be saved in the database 
+}
+
+model Admin {
+  id            String   @id @default(uuid())
+  name          String
+  email         String   @unique
+  profilePhoto  String?
+  contactNumber String
+  isDeleted     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [email], references: [email])
+
+  @@map("admins")
+}
+
+model Doctor {
+  id                  String   @id @default(uuid())
+  name                String
+  email               String   @unique
+  profilePhoto        String?
+  contactNumber       String
+  address             String
+  registrationNumber  String
+  experience          Int      @default(0)
+  gender              Gender
+  appointmentFee      Int
+  qualification       String
+  currentWorkingPlace String
+  designation         String
+  isDeleted           Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  user                User     @relation(fields: [email], references: [email])
+
+  doctorSchedules   DoctorSchedules[]
+  doctorSpecialties DoctorSpecialties[]
+  Appointment       Appointment[]
+  Prescription      Prescription[]
+
+  @@map("doctors")
+}
+
+model Patient {
+  id            String         @id @default(uuid())
+  name          String
+  email         String         @unique
+  profilePhoto  String?
+  address       String?
+  isDeleted     Boolean        @default(false)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  user          User           @relation(fields: [email], references: [email])
+  appointments  Appointment[]
+  prescriptions Prescription[]
+
+  @@map("patients")
+}
+
+```
+
+
