@@ -7,6 +7,7 @@ import { IDoctorUpdateInput } from "./doctor.interface";
 import ApiError from "../../errors/ApiError";
 import httpStatus from 'http-status';
 import { openai } from "../../helper/open-router";
+import { extractJsonFromMessage } from "../../helper/extractJsonFromMessage";
 
 
 const getAllFromDB = async (filters: any, options: IOptions) => {
@@ -163,6 +164,8 @@ const getAISuggestions = async (payload: { symptoms: string }) => {
         }
     })
 
+    console.log("doctors data loaded......\n")
+
     const prompt = `
 You are a medical assistant AI. Based on the patient's symptoms, suggest the top 3 most suitable doctors.
 Each doctor has specialties and years of experience.
@@ -176,22 +179,30 @@ ${JSON.stringify(doctors, null, 2)}
 Return your response in JSON format with full individual doctor data. 
 `;
 
-const completion = await openai.chat.completions.create({
-    model: 'z-ai/glm-4.5-air:free',
-    messages: [
-      {
-        role: 'system',
-        content:  "You are a helpful AI medical assistant that provides doctor suggestions.",
-      },
-      {
-        role: 'user',
-        content: prompt,
-      },
-    ],
-  });
+
+    console.log("analyzing...\n")
+
+    const completion = await openai.chat.completions.create({
+        model: 'z-ai/glm-4.5-air:free',
+        messages: [
+            {
+                role: 'system',
+                content: "You are a helpful AI medical assistant that provides doctor suggestions.",
+            },
+            {
+                role: 'user',
+                content: prompt,
+            },
+        ],
+    });
 
 
     console.log(doctors)
+
+    console.log(completion.choices[0].message)
+
+    const result = await extractJsonFromMessage(completion.choices[0].message)
+    return result;
 }
 
 export const DoctorService = {
