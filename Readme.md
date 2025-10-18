@@ -333,7 +333,7 @@ export const DoctorService = {
 
 ```
 
-## 61-5 Creating Appointment, Payment, and Prescription Schemas
+## 61-5 Creating Appointment, Payment, and Prescription Schemas, 61-6 Defining Relationships & Migrating Appointment, Payment, and Prescription to Database
 
 ![alt text](image-1.png)
 
@@ -531,3 +531,5 @@ model Patient {
 }
 
 ```
+
+

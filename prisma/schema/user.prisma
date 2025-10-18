@@ -49,8 +49,8 @@ model Doctor {
 
   doctorSchedules   DoctorSchedules[]
   doctorSpecialties DoctorSpecialties[]
-  Appointment       Appointment[]
-  Prescription      Prescription[]
+  appointments       Appointment[]
+  prescriptions      Prescription[]
 
   @@map("doctors")
 }
